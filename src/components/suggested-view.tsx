@@ -1,5 +1,7 @@
 "use client";
 
+import { PersonPicker } from "./person-picker";
+
 import { useState, useTransition } from "react";
 import type { suggestions as suggestionsT, users as usersT } from "@/db/schema";
 import { acceptSuggestion, dismissSuggestion, undoSuggestion, editSuggestion, acceptAll, checkNow } from "@/actions/suggestions";
@@ -93,9 +95,8 @@ function Card({ s, people }: { s: S; people: User[] }) {
             <input className="field text-[15px]" value={title} onChange={(e) => setTitle(e.target.value)} aria-label="Task title" />
             <div className="flex flex-wrap gap-2 items-center text-[13px]">
               <span className="text-ink-3">Owner</span>
-              <select className="field w-auto" defaultValue={s.ownerIds[0] ?? ""} onChange={(e) => start(() => editSuggestion(s.id, { ownerIds: e.target.value ? [e.target.value, ...s.ownerIds.slice(1).filter((x) => x !== e.target.value)] : s.ownerIds.slice(1) }))}>
-                <option value="">Not assigned</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <PersonPicker people={people} value={s.ownerIds[0] ?? null} noneLabel="Not assigned" className="min-w-[220px]"
+                onChange={(id) => start(() => editSuggestion(s.id, { ownerIds: id ? [id, ...s.ownerIds.slice(1).filter((x) => x !== id)] : s.ownerIds.slice(1) }))} />
               <span className="text-ink-3">Due</span>
               <input type="date" className="field w-auto" defaultValue={s.dueDate ?? ""} onChange={(e) => start(() => editSuggestion(s.id, { dueDate: e.target.value || null }))} />
             </div>

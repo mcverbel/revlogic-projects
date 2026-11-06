@@ -7,6 +7,7 @@ import { addMember, addMemberByEmail, removeMember } from "@/actions/engagements
 const NEW = "__new";
 import { addContact, updateContact, deleteContact } from "@/actions/people-docs";
 import { Avatar, Empty } from "./ui";
+import { PersonPicker } from "./person-picker";
 import { CONTACT_ROLES } from "@/lib/constants";
 
 type Contact = typeof ccT.$inferSelect;
@@ -44,11 +45,15 @@ export function PeopleView({ engagementId, members, contacts, people, openTasksB
               } catch (err) { setMemberError(err instanceof Error ? err.message : "Couldn't add them"); }
             });
           }}>
-            <label className="flex flex-col gap-1 text-[13px] text-ink-2">Person
-              <select className="field" required value={memberForm.userId} onChange={(e) => setMemberForm({ ...memberForm, userId: e.target.value })}>
-                <option value="">Choose…</option>{notMembers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                <option value={NEW}>+ Someone new (by email)</option>
-              </select></label>
+            <div className="flex flex-col gap-1 text-[13px] text-ink-2">Person
+              {memberForm.userId === NEW
+                ? <button type="button" className="btn btn-ghost min-h-[38px]" onClick={() => setMemberForm({ ...memberForm, userId: "" })}>← Pick from the team</button>
+                : <span className="flex items-center gap-2">
+                    <PersonPicker people={notMembers} value={memberForm.userId || null} noneLabel="Choose a person" label="Person" className="min-w-[240px]"
+                      onChange={(id) => setMemberForm({ ...memberForm, userId: id ?? "" })} />
+                    <button type="button" className="text-[12.5px] text-ink-3 hover:text-mint cursor-pointer whitespace-nowrap" onClick={() => setMemberForm({ ...memberForm, userId: NEW })}>Not listed? Add by email</button>
+                  </span>}
+            </div>
             {memberForm.userId === NEW && <>
               <label className="flex flex-col gap-1 text-[13px] text-ink-2">Email<input className="field" type="email" required value={memberForm.email} onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} placeholder="name@rev-logic.com" /></label>
               <label className="flex flex-col gap-1 text-[13px] text-ink-2">Name<input className="field" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="Optional" /></label>

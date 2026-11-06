@@ -1,3 +1,4 @@
+import { PersonField } from "@/components/person-picker";
 import { createEngagement } from "@/actions/engagements";
 import { allUsers } from "@/lib/queries";
 import { JOURNEY } from "@/lib/constants";
@@ -21,7 +22,7 @@ export default async function NewEngagement() {
           <select className="field" name="journeyStage" defaultValue="stage_0">{JOURNEY.map((j) => <option key={j.id} value={j.id}>{j.label}</option>)}</select>
         </label>
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">Engagement lead
-          <select className="field" name="leadUserId" defaultValue={me.id}>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          <PersonField name="leadUserId" people={people.map((p) => ({ id: p.id, name: p.name, email: p.email, avatarUrl: p.avatarUrl }))} defaultValue={me.id} noneLabel="No lead yet" label="Lead" />
         </label>
         <F label="Start date" name="startDate" type="date" />
         <F label="End date" name="endDate" type="date" />

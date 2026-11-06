@@ -1,5 +1,7 @@
 "use client";
 
+import { PersonPicker } from "./person-picker";
+
 import { useState, useTransition } from "react";
 import type { documents as docsT, users as usersT } from "@/db/schema";
 import { addDocument, updateDocument, deleteDocument } from "@/actions/people-docs";
@@ -103,9 +105,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
                 {["Draft", "In review", "Final", "Sent", "Signed", "Reference"].map((s) => <option key={s}>{s}</option>)}
               </select>
               <span className="text-ink-3">Owner</span>
-              <select className="field" defaultValue={open.ownerId ?? ""} onChange={(e) => start(() => updateDocument(open.id, { ownerId: e.target.value || null }))}>
-                <option value="">—</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <PersonPicker people={people} value={open.ownerId} noneLabel="No owner" onChange={(id) => start(() => updateDocument(open.id, { ownerId: id }))} />
               <span className="text-ink-3">Updated</span><span>{fmtDate(open.updatedAt)}</span>
             </div>
             <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes

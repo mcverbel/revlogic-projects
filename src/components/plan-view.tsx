@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { FullTask } from "@/lib/queries";
 import type { phases as phasesT, users as usersT } from "@/db/schema";
+import { PersonPicker, PeoplePicker } from "./person-picker";
 import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, addComment, deleteTask } from "@/actions/tasks";
 import { Avatar, StatusPill, PriorityDot, Icon, Empty, statusTone } from "./ui";
 import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES } from "@/lib/constants";
@@ -91,7 +92,6 @@ function autoGrow(el: HTMLTextAreaElement | null) {
 function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: () => void }) {
   const [, start] = useTransition();
   const save = (patch: Parameters<typeof updateTask>[1]) => start(() => updateTask(t.id, patch));
-  const owner = people.find((p) => p.id === t.ownerId);
   const cell = "w-full bg-transparent border border-transparent rounded-md px-2 py-1 text-[13px] text-ink hover:border-line-3 focus:border-mint-2 focus:bg-bg outline-none";
   return (
     <div className={`${GRID} px-4 py-2 items-start border-b border-line-2 hover:bg-[#2f3131] group`}>
@@ -112,10 +112,7 @@ function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: (
         </div>
       </div>
       <div className="flex items-center gap-1.5 min-w-0 pt-0.5">
-        {owner && <Avatar name={owner.name} src={owner.avatarUrl} size={24} />}
-        <select aria-label="Owner" defaultValue={t.ownerId ?? ""} onChange={(e) => save({ ownerId: e.target.value || null })} className={`${cell} min-w-0 flex-1 cursor-pointer`}>
-          <option value="">Unassigned</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <PersonPicker compact people={people} value={t.ownerId} onChange={(id) => save({ ownerId: id })} className="flex-1" />
         <span className="inline-flex pl-1">{t.assigneeIds.map((id) => { const p = people.find((x) => x.id === id); return p ? <span key={id} className="-ml-1.5 rounded-full border-2 border-panel"><Avatar name={p.name} src={p.avatarUrl} size={20} /></span> : null; })}</span>
       </div>
       <select aria-label="Status" defaultValue={t.status} onChange={(e) => save({ status: e.target.value as FullTask["status"] })}
@@ -268,19 +265,9 @@ function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phas
 
         <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-3 text-[13px] items-center">
           <span className="text-ink-3">Owner</span>
-          <select className="field" defaultValue={t.ownerId ?? ""} onChange={(e) => save({ ownerId: e.target.value || null })}>
-            <option value="">Unassigned</option>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          <PersonPicker people={people} value={t.ownerId} onChange={(id) => save({ ownerId: id })} />
           <span className="text-ink-3 self-start pt-1.5">Assignees</span>
-          <span className="flex flex-wrap gap-1.5">
-            {people.filter((p) => p.id !== t.ownerId).map((p) => {
-              const on = t.assigneeIds.includes(p.id);
-              return <button key={p.id} aria-pressed={on} disabled={pending}
-                onClick={() => start(() => setAssignees(t.id, on ? t.assigneeIds.filter((x) => x !== p.id) : [...t.assigneeIds, p.id]))}
-                className={`inline-flex items-center gap-1.5 min-h-8 pl-0.5 pr-2.5 rounded-full text-xs cursor-pointer ${on ? "border border-mint-2 bg-mint-bg text-ink" : "border border-dashed border-line-3 text-ink-3"}`}>
-                <Avatar name={p.name} src={p.avatarUrl} size={24} />{p.name.split(" ")[0]}</button>;
-            })}
-          </span>
+          <PeoplePicker people={people} value={t.assigneeIds} exclude={t.ownerId ? [t.ownerId] : []} onChange={(ids) => start(() => setAssignees(t.id, ids))} />
           <span className="text-ink-3">Phase</span>
           <select className="field" defaultValue={t.phaseId ?? ""} onChange={(e) => save({ phaseId: e.target.value || null })}>
             <option value="">No phase</option>{phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
