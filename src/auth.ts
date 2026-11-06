@@ -40,7 +40,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             avatarUrl: (profile.picture as string) ?? null,
             role: adminEmails.includes(email) ? "admin" : "member",
           })
-          .onConflictDoUpdate({ target: users.email, set: { avatarUrl: (profile.picture as string) ?? null } })
+          .onConflictDoUpdate({ target: users.email, set: { avatarUrl: (profile.picture as string) ?? null, ...(profile.name ? { name: profile.name as string } : {}) } })
           .returning();
         token.uid = u!.id;
         token.role = u!.role;

@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import type { clientContacts as ccT, users as usersT, engagementMembers as emT } from "@/db/schema";
-import { addMember, removeMember } from "@/actions/engagements";
+import { addMember, addMemberByEmail, removeMember } from "@/actions/engagements";
+
+const NEW = "__new";
 import { addContact, updateContact, deleteContact } from "@/actions/people-docs";
 import { Avatar, Empty } from "./ui";
 import { CONTACT_ROLES } from "@/lib/constants";
@@ -17,7 +19,8 @@ const ROLE_TONE = (r: string): [string, string] =>
 export function PeopleView({ engagementId, members, contacts, people, openTasksByUser }: { engagementId: string; members: Member[]; contacts: Contact[]; people: User[]; openTasksByUser: Record<string, number> }) {
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
-  const [memberForm, setMemberForm] = useState({ userId: "", role: "", tags: "" });
+  const [memberForm, setMemberForm] = useState({ userId: "", role: "", tags: "", email: "", name: "" });
+  const [memberError, setMemberError] = useState("");
   const [addingContact, setAddingContact] = useState(false);
   const [c, setC] = useState({ name: "", title: "", email: "", linkedinUrl: "", role: "Champion", notes: "" });
   const notMembers = people.filter((p) => !members.some((m) => m.u.id === p.id));
@@ -30,14 +33,31 @@ export function PeopleView({ engagementId, members, contacts, people, openTasksB
           <button className="btn btn-ghost" onClick={() => setAdding(!adding)}>+ Add member</button>
         </div>
         {adding && (
-          <form className="card p-4 flex flex-wrap gap-2 items-end" onSubmit={(e) => { e.preventDefault(); start(async () => { await addMember(engagementId, memberForm.userId, memberForm.role, memberForm.tags.split(",").map((t) => t.trim()).filter(Boolean)); setAdding(false); setMemberForm({ userId: "", role: "", tags: "" }); }); }}>
+          <form className="card p-4 flex flex-wrap gap-2 items-end" onSubmit={(e) => {
+            e.preventDefault(); setMemberError("");
+            const tags = memberForm.tags.split(",").map((t) => t.trim()).filter(Boolean);
+            start(async () => {
+              try {
+                if (memberForm.userId === NEW) await addMemberByEmail(engagementId, memberForm.email, memberForm.name, memberForm.role, tags);
+                else await addMember(engagementId, memberForm.userId, memberForm.role, tags);
+                setAdding(false); setMemberForm({ userId: "", role: "", tags: "", email: "", name: "" });
+              } catch (err) { setMemberError(err instanceof Error ? err.message : "Couldn't add them"); }
+            });
+          }}>
             <label className="flex flex-col gap-1 text-[13px] text-ink-2">Person
               <select className="field" required value={memberForm.userId} onChange={(e) => setMemberForm({ ...memberForm, userId: e.target.value })}>
                 <option value="">Choose…</option>{notMembers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value={NEW}>+ Someone new (by email)</option>
               </select></label>
+            {memberForm.userId === NEW && <>
+              <label className="flex flex-col gap-1 text-[13px] text-ink-2">Email<input className="field" type="email" required value={memberForm.email} onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} placeholder="name@rev-logic.com" /></label>
+              <label className="flex flex-col gap-1 text-[13px] text-ink-2">Name<input className="field" value={memberForm.name} onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} placeholder="Optional" /></label>
+            </>}
             <label className="flex flex-col gap-1 text-[13px] text-ink-2">Role on this engagement<input className="field" value={memberForm.role} onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })} placeholder="LxD, Facilitator…" /></label>
             <label className="flex flex-col gap-1 text-[13px] text-ink-2 flex-1 min-w-[200px]">Tags (comma-separated)<input className="field" value={memberForm.tags} onChange={(e) => setMemberForm({ ...memberForm, tags: e.target.value })} /></label>
             <button className="btn btn-primary min-h-[38px]" disabled={pending || !memberForm.userId}>Add</button>
+            {memberError && <p className="w-full m-0 text-[13px] text-red">{memberError}</p>}
+            {memberForm.userId === NEW && <p className="w-full m-0 text-xs text-ink-3">They can be owners and assignees right away. When they sign in with Google, they'll see everything assigned to them.</p>}
           </form>
         )}
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>

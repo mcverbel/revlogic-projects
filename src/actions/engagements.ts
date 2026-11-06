@@ -97,6 +97,12 @@ export async function addMember(engagementId: string, userId: string, projectRol
   revalidatePath("/", "layout");
 }
 
+export async function addMemberByEmail(engagementId: string, email: string, name: string, projectRole: string, tags: string[]) {
+  const { invitePerson } = await import("./people");
+  const u = await invitePerson(email, name);
+  await addMember(engagementId, u.id, projectRole, tags);
+}
+
 export async function removeMember(engagementId: string, userId: string) {
   await requireUser();
   await db.delete(engagementMembers).where(and(eq(engagementMembers.engagementId, engagementId), eq(engagementMembers.userId, userId)));
