@@ -1,0 +1,1 @@
+ALTER TABLE "engagements" ADD COLUMN "category" text DEFAULT 'engagement' NOT NULL;

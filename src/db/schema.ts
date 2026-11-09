@@ -41,6 +41,7 @@ export const engagements = pgTable("engagements", {
   name: text("name").notNull(),
   description: text("description"),
   serviceLine: text("service_line"),
+  category: text("category").notNull().default("engagement"), // engagement | creative | partner
   journeyStage: journeyStage("journey_stage").notNull().default("stage_0"),
   health: text("health").default("on_track"), // on_track | at_risk | off_track
   leadUserId: uuid("lead_user_id").references(() => users.id),

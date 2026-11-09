@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Icon, Avatar } from "./ui";
-import { journeyLabel, isPursuit } from "@/lib/constants";
+import { journeyLabel, isPursuit, CATEGORIES } from "@/lib/constants";
 import { signOutAction } from "@/actions/auth";
 
-type Eng = { id: string; slug: string; name: string; client: string; stage: string; mine: boolean };
+type Eng = { id: string; slug: string; name: string; client: string; stage: string; mine: boolean; category: string };
 
 function NavLink({ href, icon, label, active }: { href: string; icon: string; label: string; active: boolean }) {
   return (
@@ -18,8 +18,8 @@ function NavLink({ href, icon, label, active }: { href: string; icon: string; la
   );
 }
 
-function Group({ title, icon, items, badgeMint, pathname }: { title: string; icon: string; items: Eng[]; badgeMint: boolean; pathname: string }) {
-  const [open, setOpen] = useState(true);
+function Group({ title, icon, items, badgeMint, pathname, startOpen = true, showStage = true }: { title: string; icon: string; items: Eng[]; badgeMint: boolean; pathname: string; startOpen?: boolean; showStage?: boolean }) {
+  const [open, setOpen] = useState(startOpen || items.some((e) => pathname.startsWith(`/e/${e.slug}`)));
   const activeHere = items.some((e) => pathname.startsWith(`/e/${e.slug}`));
   return (
     <div className="flex flex-col gap-0.5">
@@ -34,10 +34,10 @@ function Group({ title, icon, items, badgeMint, pathname }: { title: string; ico
         const active = pathname.startsWith(`/e/${e.slug}`);
         return (
           <Link key={e.id} href={`/e/${e.slug}`} className={`flex items-center gap-3 min-h-12 py-1.5 pr-3.5 pl-[50px] rounded-[10px] no-underline text-[#e6e8e7] ${active ? "bg-[#424746]" : "hover:bg-[#384140]"}`}>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: isPursuit(e.stage) ? "#e0a54b" : "#7fdcae" }} />
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: showStage && isPursuit(e.stage) ? "#e0a54b" : "#7fdcae" }} />
             <span className="flex flex-col min-w-0">
               <span className="truncate">{e.client}</span>
-              <span className="text-xs text-[#a9aeac] truncate">{e.name} · {journeyLabel(e.stage).replace(/^Stage (\d) - .*/, "Stage $1")}</span>
+              <span className="text-xs text-[#a9aeac] truncate">{e.name}{showStage ? ` · ${journeyLabel(e.stage).replace(/^Stage (\d) - .*/, "Stage $1")}` : ""}</span>
             </span>
           </Link>
         );
@@ -57,12 +57,20 @@ export function Sidebar({ me, engagements }: { me: { name: string; email: string
       <NavLink href="/" icon="home" label="My Work" active={pathname === "/"} />
       <NavLink href="/team" icon="team" label="Team" active={pathname.startsWith("/team")} />
 
-      <div className="label-mono px-3.5 pt-5 pb-2">Engagements</div>
-      <Group title="Assigned to Me" icon="briefcase" items={engagements.filter((e) => e.mine)} badgeMint pathname={pathname} />
-      <Group title="All revlogic" icon="building" items={engagements} badgeMint={false} pathname={pathname} />
-      <Link href="/engagements/new" className="flex items-center gap-3.5 min-h-11 mt-1.5 px-3.5 rounded-[10px] border border-dashed border-[#4f5553] text-[#c9cdcb] text-sm no-underline hover:bg-[#384140]">
-        <Icon name="plus" size={21} color="#c9cdcb" />New engagement
-      </Link>
+      {CATEGORIES.map((c) => {
+        const list = engagements.filter((e) => (e.category || "engagement") === c.id);
+        const isEng = c.id === "engagement";
+        return (
+          <div key={c.id} className="flex flex-col gap-0.5">
+            <div className="label-mono px-3.5 pt-5 pb-2">{c.label}</div>
+            <Group title="Assigned to Me" icon="briefcase" items={list.filter((e) => e.mine)} badgeMint pathname={pathname} startOpen={isEng} showStage={isEng} />
+            <Group title="All revlogic" icon="building" items={list} badgeMint={false} pathname={pathname} startOpen={isEng} showStage={isEng} />
+            <Link href={`/engagements/new?category=${c.id}`} className="flex items-center gap-3.5 min-h-10 mt-1 px-3.5 rounded-[10px] border border-dashed border-[#4f5553] text-[#c9cdcb] text-sm no-underline hover:bg-[#384140]">
+              <Icon name="plus" size={19} color="#c9cdcb" />New {c.singular}
+            </Link>
+          </div>
+        );
+      })}
 
       <div className="label-mono px-3.5 pt-5 pb-2">System</div>
       <NavLink href="/connections" icon="plug" label="Connections" active={pathname.startsWith("/connections")} />

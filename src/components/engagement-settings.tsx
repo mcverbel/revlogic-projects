@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { updateEngagement, addSource, removeSource } from "@/actions/engagements";
 import type { engagements, engagementSources } from "@/db/schema";
+import { CATEGORIES } from "@/lib/constants";
 
 type E = typeof engagements.$inferSelect;
 type S = typeof engagementSources.$inferSelect;
@@ -14,8 +15,13 @@ export function EngagementSettings({ e, sources }: { e: E; sources: S[] }) {
   const save = (patch: Parameters<typeof updateEngagement>[1]) => start(() => updateEngagement(e.id, patch));
   return (
     <div className="card px-5 py-4 flex flex-col gap-4">
-      <h2 className="m-0 text-[15px] font-semibold">Engagement settings</h2>
+      <h2 className="m-0 text-[15px] font-semibold">Settings</h2>
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        <label className="flex flex-col gap-1 text-[13px] text-ink-2">Menu section
+          <select className="field" defaultValue={e.category} onChange={(ev) => save({ category: ev.target.value })}>
+            {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </label>
         <label className="flex flex-col gap-1 text-[13px] text-ink-2">Health
           <select className="field" defaultValue={e.health ?? "on_track"} onChange={(ev) => save({ health: ev.target.value })}>
             <option value="on_track">On track</option><option value="at_risk">At risk</option><option value="off_track">Off track</option>

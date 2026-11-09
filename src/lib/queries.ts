@@ -15,7 +15,7 @@ export async function sidebarEngagements(userId: string) {
   const rows = await db
     .select({
       id: engagements.id, slug: engagements.slug, name: engagements.name, stage: engagements.journeyStage,
-      client: clients.name,
+      client: clients.name, category: engagements.category,
       mine: sql<boolean>`exists(select 1 from ${engagementMembers} m where m.engagement_id = ${engagements.id} and m.user_id = ${userId})`,
     })
     .from(engagements)

@@ -18,6 +18,7 @@ const CreateSchema = z.object({
   name: z.string().min(1),
   serviceLine: z.string().optional(),
   journeyStage: z.string().default("stage_0"),
+  category: z.enum(["engagement", "creative", "partner"]).default("engagement"),
   leadUserId: z.string().uuid().optional().or(z.literal("")),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -41,7 +42,7 @@ export async function createEngagement(formData: FormData) {
   if (await db.query.engagements.findFirst({ where: eq(engagements.slug, slug) })) slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
 
   const [e] = await db.insert(engagements).values({
-    slug, clientId: client!.id, name: d.name.trim(), serviceLine: d.serviceLine || null,
+    slug, clientId: client!.id, name: d.name.trim(), serviceLine: d.serviceLine || null, category: d.category,
     journeyStage: d.journeyStage as typeof engagements.$inferInsert.journeyStage,
     leadUserId: d.leadUserId || me.id, startDate: d.startDate || null, endDate: d.endDate || null,
     aurasellOpportunityId: d.aurasellOpportunityId || null, driveFolderUrl: d.driveFolderUrl || null,
@@ -59,7 +60,7 @@ export async function createEngagement(formData: FormData) {
   for (const ch of [d.slackInternalChannelId, d.slackExternalChannelId]) if (ch) sources.push({ kind: "slack_channel", value: ch });
   if (sources.length) await db.insert(engagementSources).values(sources.map((s) => ({ ...s, engagementId: e!.id }))).onConflictDoNothing();
 
-  await logActivity({ engagementId: e!.id, actorId: me.id, entityType: "engagement", entityId: e!.id, action: "created", summary: `created the engagement` });
+  await logActivity({ engagementId: e!.id, actorId: me.id, entityType: "engagement", entityId: e!.id, action: "created", summary: `created the ${d.category === "engagement" ? "engagement" : d.category === "creative" ? "creative project" : "partner project"}` });
   revalidatePath("/", "layout");
   redirect(`/e/${e!.slug}`);
 }
@@ -76,7 +77,7 @@ export async function setJourneyStage(engagementId: string, stage: string) {
 
 export async function updateEngagement(engagementId: string, patch: Partial<{
   name: string; health: string; driveFolderUrl: string | null; aurasellOpportunityId: string | null;
-  slackInternalChannelId: string | null; slackExternalChannelId: string | null; startDate: string | null; endDate: string | null; serviceLine: string | null;
+  slackInternalChannelId: string | null; slackExternalChannelId: string | null; startDate: string | null; endDate: string | null; serviceLine: string | null; category: string;
 }>) {
   const me = await requireUser();
   await db.update(engagements).set({ ...patch, updatedAt: new Date() }).where(eq(engagements.id, engagementId));

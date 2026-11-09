@@ -1,3 +1,11 @@
+export const CATEGORIES = [
+  { id: "engagement", label: "Engagements", singular: "engagement" },
+  { id: "creative", label: "Creative", singular: "creative project" },
+  { id: "partner", label: "Partners", singular: "partner" },
+] as const;
+export type Category = (typeof CATEGORIES)[number]["id"];
+export const categoryOf = (id: string | null | undefined) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[0];
+
 export const DEAL_STAGES = [
   { id: "stage_0", label: "Stage 0 - Pipeline Generation", short: "Pipeline Generation" },
   { id: "stage_1", label: "Stage 1 - New Business Meeting", short: "New Business Meeting" },
