@@ -20,6 +20,7 @@ async function taskWithEngagement(taskId: string) {
   const e = await db.query.engagements.findFirst({ where: eq(engagements.id, t.engagementId) });
   return { t, e: e! };
 }
+const who = (me: { id: string; name: string }, uid: string, verb: string) => (uid === me.id ? `You ${verb} yourself` : `${me.name} ${verb} you`);
 const link = (slug: string, taskId: string) => `${process.env.APP_URL ?? ""}/e/${slug}/plan?task=${taskId}`;
 
 export async function createTask(engagementId: string, input: { title: string; phaseId?: string | null; ownerId?: string | null; dueDate?: string | null; isMilestone?: boolean }) {
@@ -30,9 +31,9 @@ export async function createTask(engagementId: string, input: { title: string; p
     dueDate: input.dueDate || null, startDate: input.dueDate || null, isMilestone: !!input.isMilestone, createdBy: me.id,
   }).returning();
   await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `added task "${t!.title}"` });
-  if (t!.ownerId && t!.ownerId !== me.id) {
+  if (t!.ownerId) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
-    await dmUser(t!.ownerId, `${me.name} assigned you *${t!.title}* on ${e?.name}. ${link(e!.slug, t!.id)}`);
+    await dmUser(t!.ownerId, `${who(me, t!.ownerId, "assigned")} *${t!.title}* on ${e?.name}${t!.dueDate ? ` (due ${t!.dueDate})` : ""}. ${link(e!.slug, t!.id)}`);
   }
   revalidatePath("/", "layout");
   return t!.id;
@@ -51,7 +52,7 @@ export async function updateTask(taskId: string, patch: TaskPatch) {
     if (patch.status === "done" && before.isMilestone) await postToChannel(e.slackInternalChannelId, `:white_check_mark: Milestone done on ${e.name}: *${before.title}*`);
   } else if (patch.ownerId && patch.ownerId !== before.ownerId) {
     await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "assigned", summary: `changed the owner of "${before.title}"` });
-    if (patch.ownerId !== me.id) await dmUser(patch.ownerId, `${me.name} assigned you *${before.title}* on ${e.name}. ${link(e.slug, taskId)}`);
+    await dmUser(patch.ownerId, `${who(me, patch.ownerId, "assigned")} *${before.title}* on ${e.name}. ${link(e.slug, taskId)}`);
   } else if (patch.dueDate !== undefined || patch.startDate !== undefined) {
     await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "rescheduled", summary: `rescheduled "${before.title}"` });
   }
@@ -64,8 +65,8 @@ export async function setAssignees(taskId: string, userIds: string[]) {
   const current = (await db.select().from(taskAssignees).where(eq(taskAssignees.taskId, taskId))).map((a) => a.userId);
   await db.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
   if (userIds.length) await db.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
-  for (const uid of userIds.filter((u) => !current.includes(u) && u !== me.id)) {
-    await dmUser(uid, `${me.name} added you to *${t.title}* on ${e.name}. ${link(e.slug, taskId)}`);
+  for (const uid of userIds.filter((u) => !current.includes(u))) {
+    await dmUser(uid, `${who(me, uid, "added")} to *${t.title}* on ${e.name}. ${link(e.slug, taskId)}`);
   }
   revalidatePath("/", "layout");
 }
@@ -100,8 +101,8 @@ export async function addComment(taskId: string, body: string) {
   const mentioned = people.filter((p) => lower.includes(`@${p.name.toLowerCase()}`) || lower.includes(`@${p.name.split(" ")[0]!.toLowerCase()}`));
   await db.insert(comments).values({ engagementId: e.id, taskId, authorId: me.id, body: body.trim(), mentions: mentioned.map((m) => m.id) });
   await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "commented", summary: `commented on "${t.title}"` });
-  for (const m of mentioned.filter((m) => m.id !== me.id)) {
-    await dmUser(m.id, `${me.name} mentioned you on *${t.title}* (${e.name}): "${body.trim().slice(0, 200)}" ${link(e.slug, taskId)}`);
+  for (const m of mentioned) {
+    await dmUser(m.id, `${m.id === me.id ? "You mentioned yourself" : `${me.name} mentioned you`} on *${t.title}* (${e.name}): "${body.trim().slice(0, 200)}" ${link(e.slug, taskId)}`);
   }
   revalidatePath("/", "layout");
 }

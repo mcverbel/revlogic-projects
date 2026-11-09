@@ -30,7 +30,13 @@ export async function acceptSuggestion(id: string, opts?: { asDone?: boolean; ti
   if (linked.length) await db.insert(taskLinks).values(linked.map((src) => ({ taskId: t!.id, label: src.label, url: src.url!, createdBy: me.id })));
   await db.update(suggestions).set({ status: "accepted", taskId: t!.id, decidedBy: me.id, decidedAt: new Date(), title }).where(eq(suggestions.id, id));
   await logActivity({ engagementId: s.engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `accepted a suggested task: "${title}"${opts?.asDone ? " (already done)" : ""}` });
-  if (owner && owner !== me.id && !opts?.asDone) await dmUser(owner, `${me.name} assigned you *${title}* on ${e?.name} (suggested from ${s.sources[0]?.label}). ${process.env.APP_URL ?? ""}/e/${e?.slug}/plan?task=${t!.id}`);
+  if (!opts?.asDone) {
+    const url = `${process.env.APP_URL ?? ""}/e/${e?.slug}/plan?task=${t!.id}`;
+    for (const uid of [owner, ...others].filter(Boolean) as string[]) {
+      const lead = uid === me.id ? (uid === owner ? "You assigned yourself" : "You added yourself to") : uid === owner ? `${me.name} assigned you` : `${me.name} added you to`;
+      await dmUser(uid, `${lead} *${title}* on ${e?.name} (suggested from ${s.sources[0]?.label}). ${url}`);
+    }
+  }
   revalidatePath("/", "layout");
 }
 
