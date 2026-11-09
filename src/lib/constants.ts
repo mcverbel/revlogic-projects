@@ -1,10 +1,22 @@
+/** Where a project sits in the left menu. Creative has two buckets. */
 export const CATEGORIES = [
-  { id: "engagement", label: "Engagements", singular: "engagement" },
-  { id: "creative", label: "Creative", singular: "creative project" },
-  { id: "partner", label: "Partners", singular: "partner" },
+  { id: "engagement", label: "Engagements", singular: "engagement", section: "engagement" },
+  { id: "creative_design", label: "Creative · Graphic Design", singular: "graphic design project", section: "creative" },
+  { id: "creative_video", label: "Creative · Video", singular: "video project", section: "creative" },
+  { id: "partner", label: "Partners", singular: "partner", section: "partner" },
 ] as const;
 export type Category = (typeof CATEGORIES)[number]["id"];
-export const categoryOf = (id: string | null | undefined) => CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[0];
+/** "creative" (before the buckets existed) counts as Graphic Design. */
+export const categoryOf = (id: string | null | undefined) =>
+  CATEGORIES.find((c) => c.id === (id === "creative" ? "creative_design" : id)) ?? CATEGORIES[0];
+export const SECTIONS = [
+  { id: "engagement", label: "Engagements" },
+  { id: "creative", label: "Creative", buckets: [
+    { id: "creative_design", label: "Graphic Design", icon: "pen" },
+    { id: "creative_video", label: "Video", icon: "video" },
+  ] },
+  { id: "partner", label: "Partners" },
+] as const;
 
 export const DEAL_STAGES = [
   { id: "stage_0", label: "Stage 0 - Pipeline Generation", short: "Pipeline Generation" },

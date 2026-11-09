@@ -34,6 +34,8 @@ const ICONS: Record<string, React.ReactNode> = {
   briefcase: <><rect x="2.5" y="7" width="19" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>,
   building: <><path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9.5 9h1M13.5 9h1M9.5 13h1M13.5 13h1M9.5 17h1M13.5 17h1" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  pen: <><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+  video: <><rect x="2.5" y="6" width="13" height="12" rx="2" /><path d="m15.5 10 6-3.5v11l-6-3.5" /></>,
   link: <><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></>,
   plug: <><path d="M9 7H6a4 4 0 0 0 0 8h3" /><path d="M15 7h3a4 4 0 0 1 0 8h-3" /><path d="M8 11h8" /></>,
   folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,

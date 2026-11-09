@@ -18,7 +18,7 @@ const CreateSchema = z.object({
   name: z.string().min(1),
   serviceLine: z.string().optional(),
   journeyStage: z.string().default("stage_0"),
-  category: z.enum(["engagement", "creative", "partner"]).default("engagement"),
+  category: z.enum(["engagement", "creative_design", "creative_video", "partner"]).default("engagement"),
   leadUserId: z.string().uuid().optional().or(z.literal("")),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -60,7 +60,7 @@ export async function createEngagement(formData: FormData) {
   for (const ch of [d.slackInternalChannelId, d.slackExternalChannelId]) if (ch) sources.push({ kind: "slack_channel", value: ch });
   if (sources.length) await db.insert(engagementSources).values(sources.map((s) => ({ ...s, engagementId: e!.id }))).onConflictDoNothing();
 
-  await logActivity({ engagementId: e!.id, actorId: me.id, entityType: "engagement", entityId: e!.id, action: "created", summary: `created the ${d.category === "engagement" ? "engagement" : d.category === "creative" ? "creative project" : "partner project"}` });
+  await logActivity({ engagementId: e!.id, actorId: me.id, entityType: "engagement", entityId: e!.id, action: "created", summary: `created the ${d.category === "engagement" ? "engagement" : d.category === "partner" ? "partner project" : d.category === "creative_video" ? "video project" : "graphic design project"}` });
   revalidatePath("/", "layout");
   redirect(`/e/${e!.slug}`);
 }

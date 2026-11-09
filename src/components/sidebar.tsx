@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Icon, Avatar } from "./ui";
-import { journeyLabel, isPursuit, CATEGORIES } from "@/lib/constants";
+import { journeyLabel, isPursuit, SECTIONS, categoryOf } from "@/lib/constants";
 import { signOutAction } from "@/actions/auth";
 
 type Eng = { id: string; slug: string; name: string; client: string; stage: string; mine: boolean; category: string };
@@ -57,17 +57,32 @@ export function Sidebar({ me, engagements }: { me: { name: string; email: string
       <NavLink href="/" icon="home" label="My Work" active={pathname === "/"} />
       <NavLink href="/team" icon="team" label="Team" active={pathname.startsWith("/team")} />
 
-      {CATEGORIES.map((c) => {
-        const list = engagements.filter((e) => (e.category || "engagement") === c.id);
-        const isEng = c.id === "engagement";
+      {SECTIONS.map((sec) => {
+        const inSection = engagements.filter((e) => categoryOf(e.category).section === sec.id);
+        const isEng = sec.id === "engagement";
+        const newLink = (category: string, label: string) => (
+          <Link href={`/engagements/new?category=${category}`} className="flex items-center gap-3.5 min-h-10 mt-1 px-3.5 rounded-[10px] border border-dashed border-[#4f5553] text-[#c9cdcb] text-sm no-underline hover:bg-[#384140]">
+            <Icon name="plus" size={19} color="#c9cdcb" />{label}
+          </Link>
+        );
         return (
-          <div key={c.id} className="flex flex-col gap-0.5">
-            <div className="label-mono px-3.5 pt-5 pb-2">{c.label}</div>
-            <Group title="Assigned to Me" icon="briefcase" items={list.filter((e) => e.mine)} badgeMint pathname={pathname} startOpen={isEng} showStage={isEng} />
-            <Group title="All revlogic" icon="building" items={list} badgeMint={false} pathname={pathname} startOpen={isEng} showStage={isEng} />
-            <Link href={`/engagements/new?category=${c.id}`} className="flex items-center gap-3.5 min-h-10 mt-1 px-3.5 rounded-[10px] border border-dashed border-[#4f5553] text-[#c9cdcb] text-sm no-underline hover:bg-[#384140]">
-              <Icon name="plus" size={19} color="#c9cdcb" />New {c.singular}
-            </Link>
+          <div key={sec.id} className="flex flex-col gap-0.5">
+            <div className="label-mono px-3.5 pt-5 pb-2">{sec.label}</div>
+            {"buckets" in sec ? (
+              <>
+                {sec.buckets.map((b) => {
+                  const list = inSection.filter((e) => categoryOf(e.category).id === b.id);
+                  return <Group key={b.id} title={b.label} icon={b.icon} items={list} badgeMint={list.some((e) => e.mine)} pathname={pathname} startOpen={false} showStage={false} />;
+                })}
+                {newLink("creative_design", "New creative project")}
+              </>
+            ) : (
+              <>
+                <Group title="Assigned to Me" icon="briefcase" items={inSection.filter((e) => e.mine)} badgeMint pathname={pathname} startOpen={isEng} showStage={isEng} />
+                <Group title="All revlogic" icon="building" items={inSection} badgeMint={false} pathname={pathname} startOpen={isEng} showStage={isEng} />
+                {newLink(sec.id, isEng ? "New engagement" : "New partner")}
+              </>
+            )}
           </div>
         );
       })}

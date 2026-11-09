@@ -18,7 +18,7 @@ export function EngagementSettings({ e, sources }: { e: E; sources: S[] }) {
       <h2 className="m-0 text-[15px] font-semibold">Settings</h2>
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
         <label className="flex flex-col gap-1 text-[13px] text-ink-2">Menu section
-          <select className="field" defaultValue={e.category} onChange={(ev) => save({ category: ev.target.value })}>
+          <select className="field" defaultValue={e.category === "creative" ? "creative_design" : e.category} onChange={(ev) => save({ category: ev.target.value })}>
             {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </label>
