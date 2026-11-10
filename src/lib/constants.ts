@@ -1,3 +1,9 @@
+/** Shared task boards behind each Creative bucket. */
+export const CREATIVE_BOARDS = [
+  { bucket: "graphic-design", slug: "creative-graphic-design", name: "Graphic Design", category: "creative_design" },
+  { bucket: "video", slug: "creative-video", name: "Video", category: "creative_video" },
+] as const;
+
 /** Where a project sits in the left menu. Creative has two buckets. */
 export const CATEGORIES = [
   { id: "engagement", label: "Engagements", singular: "engagement", section: "engagement" },
@@ -12,8 +18,8 @@ export const categoryOf = (id: string | null | undefined) =>
 export const SECTIONS = [
   { id: "engagement", label: "Engagements" },
   { id: "creative", label: "Creative", buckets: [
-    { id: "creative_design", label: "Graphic Design", icon: "pen" },
-    { id: "creative_video", label: "Video", icon: "video" },
+    { id: "creative_design", label: "Graphic Design", icon: "pen", href: "/creative/graphic-design", boardSlug: "creative-graphic-design" },
+    { id: "creative_video", label: "Video", icon: "video", href: "/creative/video", boardSlug: "creative-video" },
   ] },
   { id: "partner", label: "Partners" },
 ] as const;

@@ -3,10 +3,12 @@ import { loadEngagement } from "@/lib/load";
 import { Avatar } from "@/components/ui";
 import { fmtDate, timeAgo, todayISO } from "@/lib/format";
 import { EngagementSettings } from "@/components/engagement-settings";
+import { listEngagements } from "@/lib/queries";
 
 export default async function Overview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const { e, tasks, members, contacts, activity, people, sources } = await loadEngagement(slug);
+  const others = (await listEngagements()).filter((r) => r.e.id !== e.id).map((r) => ({ id: r.e.id, label: `${r.client.name} · ${r.e.name}` }));
   const done = tasks.filter((t) => t.status === "done").length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const today = todayISO();
@@ -54,7 +56,7 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
             );
           })}
         </div>
-        <EngagementSettings e={e} sources={sources} />
+        <EngagementSettings e={e} sources={sources} others={others} />
       </div>
     </section>
   );

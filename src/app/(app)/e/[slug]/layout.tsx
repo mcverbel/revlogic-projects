@@ -3,6 +3,7 @@ import { Icon } from "@/components/ui";
 import { JourneyBar } from "@/components/journey-bar";
 import { Tabs } from "@/components/tabs";
 import { fmtDate, initials } from "@/lib/format";
+import { categoryOf } from "@/lib/constants";
 
 const HEALTH: Record<string, [string, string, string]> = {
   on_track: ["#1f3a2c", "#8be3b7", "On track"], at_risk: ["#43361f", "#f2c27b", "At risk"], off_track: ["#452326", "#ff8a80", "Off track"],
@@ -13,10 +14,12 @@ export default async function EngagementLayout({ children, params }: { children:
   const { e, client, tasks, suggestions, members, contacts, docs } = await loadEngagement(slug);
   const [hbg, hfg, hlabel] = HEALTH[e.health ?? "on_track"] ?? HEALTH.on_track!;
   const slackUrl = (id: string) => `https://slack.com/app_redirect?channel=${id}`;
+  const cat = categoryOf(e.category);
+  const isEng = cat.section === "engagement";
   return (
     <>
       <header className="flex flex-col gap-3.5">
-        <div className="text-[13px] text-ink-3">Engagements / {client.name}</div>
+        <div className="text-[13px] text-ink-3">{cat.label.replace(" · ", " / ")} / {client.name}</div>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
             <div aria-hidden className="w-12 h-12 rounded-xl bg-mint text-mint-ink flex items-center justify-center font-semibold text-lg shrink-0">{initials(client.name)}</div>
@@ -37,7 +40,7 @@ export default async function EngagementLayout({ children, params }: { children:
             {e.slackExternalChannelId && <a className="btn btn-ghost no-underline text-ink" href={slackUrl(e.slackExternalChannelId)} target="_blank" rel="noreferrer">Slack · client</a>}
           </div>
         </div>
-        <JourneyBar engagementId={e.id} stage={e.journeyStage} synced={!!e.aurasellOpportunityId} />
+        {isEng && <JourneyBar engagementId={e.id} stage={e.journeyStage} synced={!!e.aurasellOpportunityId} />}
         <Tabs slug={e.slug} counts={{
           plan: tasks.length, suggested: suggestions.filter((s) => s.status === "pending").length,
           people: members.length + contacts.length, docs: docs.length,
