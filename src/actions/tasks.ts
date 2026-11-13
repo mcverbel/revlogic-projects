@@ -8,6 +8,8 @@ import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
 import { dmUser, postToChannel } from "@/lib/slack";
 import { TASK_STATUSES } from "@/lib/constants";
+import { appUrl } from "@/lib/app-url";
+import { fmtDate } from "@/lib/format";
 
 type TaskPatch = Partial<{
   title: string; description: string | null; notes: string | null; ownerId: string | null; status: typeof tasks.$inferInsert.status;
@@ -21,7 +23,7 @@ async function taskWithEngagement(taskId: string) {
   return { t, e: e! };
 }
 const who = (me: { id: string; name: string }, uid: string, verb: string) => (uid === me.id ? `You ${verb} yourself` : `${me.name} ${verb} you`);
-const link = (slug: string, taskId: string) => `${process.env.APP_URL ?? ""}/e/${slug}/plan?task=${taskId}`;
+const link = (slug: string, taskId: string) => `<${appUrl()}/e/${slug}/plan?task=${taskId}|Open task>`;
 
 export async function createTask(engagementId: string, input: {
   title: string; phaseId?: string | null; ownerId?: string | null; dueDate?: string | null; startDate?: string | null; isMilestone?: boolean;
@@ -41,7 +43,7 @@ export async function createTask(engagementId: string, input: {
   await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `added task "${t!.title}"` });
   if (t!.ownerId) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
-    await dmUser(t!.ownerId, `${who(me, t!.ownerId, "assigned")} *${t!.title}* on ${e?.name}${t!.dueDate ? ` (due ${t!.dueDate})` : ""}. ${link(e!.slug, t!.id)}`);
+    await dmUser(t!.ownerId, `${who(me, t!.ownerId, "assigned")} *${t!.title}* on ${e?.name}${t!.dueDate ? ` (due ${fmtDate(t!.dueDate)})` : ""}. ${link(e!.slug, t!.id)}`);
   }
   if (assignees.length) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });

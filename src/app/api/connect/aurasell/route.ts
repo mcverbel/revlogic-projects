@@ -3,10 +3,11 @@ import { cookies } from "next/headers";
 import { createHash, randomBytes } from "crypto";
 import { auth } from "@/auth";
 import { AURASELL } from "@/lib/sources/aurasell";
+import { appUrl } from "@/lib/app-url";
 
 export async function GET() {
   const session = await auth();
-  const app = process.env.APP_URL ?? "http://localhost:3000";
+  const app = appUrl();
   if (!session?.user?.id) return NextResponse.redirect(new URL("/login", app));
   const verifier = randomBytes(32).toString("base64url");
   const state = randomBytes(16).toString("base64url");

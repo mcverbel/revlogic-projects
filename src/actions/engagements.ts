@@ -11,6 +11,7 @@ import { logActivity } from "@/lib/activity";
 import { slugify } from "@/lib/format";
 import { journeyLabel } from "@/lib/constants";
 import { dmUser, postToChannel } from "@/lib/slack";
+import { appUrl } from "@/lib/app-url";
 
 const CreateSchema = z.object({
   clientName: z.string().min(1),
@@ -94,7 +95,7 @@ export async function addMember(engagementId: string, userId: string, projectRol
     .onConflictDoUpdate({ target: [engagementMembers.engagementId, engagementMembers.userId], set: { projectRole: projectRole || null, tags } });
   const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
   await logActivity({ engagementId, actorId: me.id, entityType: "member", entityId: userId, action: "assigned", summary: `added a team member${projectRole ? ` as ${projectRole}` : ""}` });
-  if (userId !== me.id) await dmUser(userId, `${me.name} added you to *${e?.name}*${projectRole ? ` as ${projectRole}` : ""}. ${process.env.APP_URL ?? ""}/e/${e?.slug}`);
+  if (userId !== me.id) await dmUser(userId, `${me.name} added you to *${e?.name}*${projectRole ? ` as ${projectRole}` : ""}. ${appUrl()}/e/${e?.slug}`);
   revalidatePath("/", "layout");
 }
 

@@ -4,6 +4,7 @@ import { connections, apiTokens } from "@/db/schema";
 import { requireUser } from "@/lib/session";
 import { aurasellConfigured } from "@/lib/sources/aurasell";
 import { ConnectionsView } from "@/components/connections-view";
+import { appUrl } from "@/lib/app-url";
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ error?: string; why?: string; connected?: string }> }) {
   const sp = await searchParams;
@@ -25,7 +26,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       mine={{ gmail: status("gmail"), slackUser: status("slack_user"), otter: status("otter"), aurasell: status("aurasell") }}
       slackOAuthReady={!!process.env.SLACK_CLIENT_ID}
       tokens={tokens.map((t) => ({ id: t.id, label: t.label ?? "Claude", lastUsedAt: t.lastUsedAt?.toISOString() ?? null }))}
-      appUrl={process.env.APP_URL ?? ""}
+      appUrl={appUrl()}
       refreshUrl={process.env.AURASELL_SYNC_TASK_URL ?? null}
     />
     </>

@@ -6,9 +6,10 @@ import { db } from "@/db";
 import { connections } from "@/db/schema";
 import { encrypt } from "@/lib/crypto";
 import { AURASELL } from "@/lib/sources/aurasell";
+import { appUrl } from "@/lib/app-url";
 
 export async function GET(req: NextRequest) {
-  const app = process.env.APP_URL ?? "http://localhost:3000";
+  const app = appUrl();
   const fail = (why: string) => NextResponse.redirect(new URL(`/connections?error=aurasell&why=${encodeURIComponent(why)}`, app));
   const session = await auth();
   const jar = await cookies();
