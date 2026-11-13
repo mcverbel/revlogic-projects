@@ -106,14 +106,27 @@ export async function removeTaskLink(linkId: string) {
   revalidatePath("/", "layout");
 }
 
-export async function addComment(taskId: string, body: string) {
+export async function addComment(taskId: string, body: string, mentionIds: string[] = []) {
   const me = await requireUser();
   if (!body.trim()) return;
   const { t, e } = await taskWithEngagement(taskId);
-  // @mentions: "@First Last" or "@first" matched against the team
+  // @mentions: people picked from the suggestions, plus "@First Last" typed by hand.
+  // A bare "@first" only counts when exactly one teammate has that first name.
   const people = await db.select().from(users);
   const lower = body.toLowerCase();
-  const mentioned = people.filter((p) => lower.includes(`@${p.name.toLowerCase()}`) || lower.includes(`@${p.name.split(" ")[0]!.toLowerCase()}`));
+  const tagged = (s: string) => new RegExp(`@${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu").test(lower);
+  const ids = new Set<string>();
+  for (const p of people) {
+    if (mentionIds.includes(p.id) && lower.includes(`@${p.name.toLowerCase()}`)) ids.add(p.id);
+    else if (p.name && tagged(p.name.toLowerCase())) ids.add(p.id);
+  }
+  for (const p of people) {
+    const first = p.name.split(" ")[0]!.toLowerCase();
+    if (!first || ids.has(p.id) || !tagged(first)) continue;
+    const same = people.filter((x) => x.name.split(" ")[0]!.toLowerCase() === first);
+    if (same.length === 1 && !people.some((x) => ids.has(x.id) && x.name.toLowerCase().startsWith(first + " "))) ids.add(p.id);
+  }
+  const mentioned = people.filter((p) => ids.has(p.id));
   await db.insert(comments).values({ engagementId: e.id, taskId, authorId: me.id, body: body.trim(), mentions: mentioned.map((m) => m.id) });
   await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "commented", summary: `commented on "${t.title}"` });
   for (const m of mentioned) {

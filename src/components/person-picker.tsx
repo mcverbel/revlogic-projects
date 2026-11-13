@@ -9,7 +9,7 @@ export type PickPerson = { id: string; name: string; email?: string | null; avat
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Best matches first: first name / last name starts with the query, then anywhere in the name or email. */
-function rank(people: PickPerson[], q: string) {
+export function rank(people: PickPerson[], q: string) {
   const n = norm(q.trim());
   if (!n) return people;
   const scored: [PickPerson, number][] = [];

@@ -6,6 +6,7 @@ import type { FullTask } from "@/lib/queries";
 import type { phases as phasesT, users as usersT } from "@/db/schema";
 import { PersonPicker, PeoplePicker } from "./person-picker";
 import { NewTaskBar } from "./new-task-bar";
+import { MentionBox, CommentBody } from "./mention-box";
 import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, addComment, deleteTask } from "@/actions/tasks";
 import { Avatar, StatusPill, PriorityDot, Icon, Empty, statusTone } from "./ui";
 import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES } from "@/lib/constants";
@@ -228,6 +229,7 @@ function Timeline({ tasks, phases, people, onOpen }: { tasks: FullTask[]; phases
 function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phases: Phase[]; people: User[]; onClose: () => void }) {
   const [pending, start] = useTransition();
   const [comment, setComment] = useState("");
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const save = (patch: Parameters<typeof updateTask>[1]) => start(() => updateTask(t.id, patch));
@@ -319,13 +321,13 @@ function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phas
               <div key={c.id} className="flex gap-2.5">
                 <Avatar name={a?.name ?? "?"} src={a?.avatarUrl} size={28} />
                 <div className="flex flex-col gap-0.5 min-w-0"><span className="text-[13px]"><span className="font-semibold">{a?.name}</span> <span className="text-xs text-ink-3">{fmtDate(c.createdAt)}</span></span>
-                  <span className="text-[14px] leading-relaxed whitespace-pre-wrap">{c.body}</span></div>
+                  <span className="text-[14px] leading-relaxed whitespace-pre-wrap"><CommentBody body={c.body} people={people} /></span></div>
               </div>
             );
           })}
-          <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await addComment(t.id, comment); setComment(""); }); }}>
-            <label htmlFor="comment" className="text-xs text-ink-3">Add a comment (type @name to notify a teammate in Slack)</label>
-            <textarea id="comment" className="field" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} />
+          <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await addComment(t.id, comment, mentionIds); setComment(""); setMentionIds([]); }); }}>
+            <label htmlFor="comment" className="text-xs text-ink-3">Add a comment. Anyone you @tag gets a Slack DM.</label>
+            <MentionBox id="comment" people={people} value={comment} onChange={setComment} mentionIds={mentionIds} onMentionIds={setMentionIds} />
             <div className="flex justify-between">
               <button type="button" className="btn btn-quiet hover:text-red" onClick={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }}>Delete task</button>
               <button className="btn btn-primary" disabled={!comment.trim() || pending}>Comment</button>
