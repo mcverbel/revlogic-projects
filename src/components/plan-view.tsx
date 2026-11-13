@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { FullTask } from "@/lib/queries";
 import type { phases as phasesT, users as usersT } from "@/db/schema";
 import { PersonPicker, PeoplePicker } from "./person-picker";
+import { NewTaskBar } from "./new-task-bar";
 import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, addComment, deleteTask } from "@/actions/tasks";
 import { Avatar, StatusPill, PriorityDot, Icon, Empty, statusTone } from "./ui";
 import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES } from "@/lib/constants";
@@ -53,10 +54,7 @@ export function PlanView({ engagementId, tasks, phases, people }: { engagementId
         </div>
       </div>
 
-      <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await createTask(engagementId, { title: newTitle, phaseId: phases.at(-1)?.id }); setNewTitle(""); }); }}>
-        <input className="field flex-1" placeholder="Add a task and press Enter" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} aria-label="New task title" />
-        <button className="btn btn-primary min-h-[38px]" disabled={!newTitle.trim() || pending}><Icon name="plus" size={16} />Add task</button>
-      </form>
+      <NewTaskBar engagementId={engagementId} phases={phases} people={people} />
 
       {view === "list" ? (
         <div className="card overflow-x-auto">

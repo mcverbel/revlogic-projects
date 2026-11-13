@@ -23,17 +23,29 @@ async function taskWithEngagement(taskId: string) {
 const who = (me: { id: string; name: string }, uid: string, verb: string) => (uid === me.id ? `You ${verb} yourself` : `${me.name} ${verb} you`);
 const link = (slug: string, taskId: string) => `${process.env.APP_URL ?? ""}/e/${slug}/plan?task=${taskId}`;
 
-export async function createTask(engagementId: string, input: { title: string; phaseId?: string | null; ownerId?: string | null; dueDate?: string | null; isMilestone?: boolean }) {
+export async function createTask(engagementId: string, input: {
+  title: string; phaseId?: string | null; ownerId?: string | null; dueDate?: string | null; startDate?: string | null; isMilestone?: boolean;
+  assigneeIds?: string[]; status?: (typeof tasks.$inferInsert)["status"]; priority?: (typeof tasks.$inferInsert)["priority"];
+  notes?: string | null; waitingOnClient?: boolean;
+}) {
   const me = await requireUser();
   if (!input.title.trim()) return;
   const [t] = await db.insert(tasks).values({
     engagementId, title: input.title.trim(), phaseId: input.phaseId || null, ownerId: input.ownerId || null,
-    dueDate: input.dueDate || null, startDate: input.dueDate || null, isMilestone: !!input.isMilestone, createdBy: me.id,
+    dueDate: input.dueDate || null, startDate: input.startDate || input.dueDate || null, isMilestone: !!input.isMilestone,
+    status: input.status ?? "not_started", priority: input.priority ?? "medium", notes: input.notes || null,
+    waitingOnClient: !!input.waitingOnClient, completedAt: input.status === "done" ? new Date() : null, createdBy: me.id,
   }).returning();
+  const assignees = [...new Set(input.assigneeIds ?? [])].filter((id) => id !== t!.ownerId);
+  if (assignees.length) await db.insert(taskAssignees).values(assignees.map((userId) => ({ taskId: t!.id, userId })));
   await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `added task "${t!.title}"` });
   if (t!.ownerId) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
     await dmUser(t!.ownerId, `${who(me, t!.ownerId, "assigned")} *${t!.title}* on ${e?.name}${t!.dueDate ? ` (due ${t!.dueDate})` : ""}. ${link(e!.slug, t!.id)}`);
+  }
+  if (assignees.length) {
+    const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
+    for (const uid of assignees) await dmUser(uid, `${who(me, uid, "added")} to *${t!.title}* on ${e?.name}. ${link(e!.slug, t!.id)}`);
   }
   revalidatePath("/", "layout");
   return t!.id;
