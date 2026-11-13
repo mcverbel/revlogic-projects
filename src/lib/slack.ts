@@ -35,10 +35,10 @@ async function slackIdFor(userId: string) {
   return null;
 }
 
-export async function dmUser(userId: string, text: string) {
+export async function dmUser(userId: string, text: string, blocks?: unknown[]) {
   const sid = await slackIdFor(userId);
   if (!sid) return;
-  await slackApi("chat.postMessage", { channel: sid, text, unfurl_links: false });
+  await slackApi("chat.postMessage", { channel: sid, text, unfurl_links: false, unfurl_media: false, ...(blocks ? { blocks } : {}) });
 }
 
 export async function postToChannel(channel: string | null | undefined, text: string) {

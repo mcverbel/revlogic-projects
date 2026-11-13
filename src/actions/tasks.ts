@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { tasks, taskAssignees, taskLinks, userTaskPrefs, comments, phases, engagements, users } from "@/db/schema";
 import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
-import { dmUser, postToChannel } from "@/lib/slack";
+import { postToChannel } from "@/lib/slack";
+import { notifyTask } from "@/lib/notify";
 import { TASK_STATUSES } from "@/lib/constants";
 import { appUrl } from "@/lib/app-url";
 import { fmtDate } from "@/lib/format";
@@ -43,11 +44,11 @@ export async function createTask(engagementId: string, input: {
   await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `added task "${t!.title}"` });
   if (t!.ownerId) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
-    await dmUser(t!.ownerId, `${who(me, t!.ownerId, "assigned")} *${t!.title}* on ${e?.name}${t!.dueDate ? ` (due ${fmtDate(t!.dueDate)})` : ""}. ${link(e!.slug, t!.id)}`);
+    await notifyTask({ to: t!.ownerId, by: me, kind: "owner", taskId: t!.id, title: t!.title, dueDate: t!.dueDate, engagementId });
   }
   if (assignees.length) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
-    for (const uid of assignees) await dmUser(uid, `${who(me, uid, "added")} to *${t!.title}* on ${e?.name}. ${link(e!.slug, t!.id)}`);
+    for (const uid of assignees) await notifyTask({ to: uid, by: me, kind: "assignee", taskId: t!.id, title: t!.title, dueDate: t!.dueDate, engagementId });
   }
   revalidatePath("/", "layout");
   return t!.id;
@@ -66,7 +67,7 @@ export async function updateTask(taskId: string, patch: TaskPatch) {
     if (patch.status === "done" && before.isMilestone) await postToChannel(e.slackInternalChannelId, `:white_check_mark: Milestone done on ${e.name}: *${before.title}*`);
   } else if (patch.ownerId && patch.ownerId !== before.ownerId) {
     await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "assigned", summary: `changed the owner of "${before.title}"` });
-    await dmUser(patch.ownerId, `${who(me, patch.ownerId, "assigned")} *${before.title}* on ${e.name}. ${link(e.slug, taskId)}`);
+    await notifyTask({ to: patch.ownerId, by: me, kind: "owner", taskId, title: before.title, dueDate: before.dueDate, engagementId: e.id });
   } else if (patch.dueDate !== undefined || patch.startDate !== undefined) {
     await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "rescheduled", summary: `rescheduled "${before.title}"` });
   }
@@ -80,7 +81,7 @@ export async function setAssignees(taskId: string, userIds: string[]) {
   await db.delete(taskAssignees).where(eq(taskAssignees.taskId, taskId));
   if (userIds.length) await db.insert(taskAssignees).values(userIds.map((userId) => ({ taskId, userId })));
   for (const uid of userIds.filter((u) => !current.includes(u))) {
-    await dmUser(uid, `${who(me, uid, "added")} to *${t.title}* on ${e.name}. ${link(e.slug, taskId)}`);
+    await notifyTask({ to: uid, by: me, kind: "assignee", taskId, title: t.title, dueDate: t.dueDate, engagementId: e.id });
   }
   revalidatePath("/", "layout");
 }
@@ -116,7 +117,7 @@ export async function addComment(taskId: string, body: string) {
   await db.insert(comments).values({ engagementId: e.id, taskId, authorId: me.id, body: body.trim(), mentions: mentioned.map((m) => m.id) });
   await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "commented", summary: `commented on "${t.title}"` });
   for (const m of mentioned) {
-    await dmUser(m.id, `${m.id === me.id ? "You mentioned yourself" : `${me.name} mentioned you`} on *${t.title}* (${e.name}): "${body.trim().slice(0, 200)}" ${link(e.slug, taskId)}`);
+    await notifyTask({ to: m.id, by: me, kind: "mention", taskId, title: t.title, dueDate: t.dueDate, engagementId: e.id, comment: body.trim() });
   }
   revalidatePath("/", "layout");
 }

@@ -7,6 +7,7 @@ import { suggestions, tasks, taskAssignees, taskLinks, engagements, phases } fro
 import { asc } from "drizzle-orm";
 import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
+import { notifyTask } from "@/lib/notify";
 import { dmUser } from "@/lib/slack";
 import { runSuggestionsForEngagement } from "@/lib/suggest";
 import { appUrl } from "@/lib/app-url";
@@ -32,10 +33,9 @@ export async function acceptSuggestion(id: string, opts?: { asDone?: boolean; ti
   await db.update(suggestions).set({ status: "accepted", taskId: t!.id, decidedBy: me.id, decidedAt: new Date(), title }).where(eq(suggestions.id, id));
   await logActivity({ engagementId: s.engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `accepted a suggested task: "${title}"${opts?.asDone ? " (already done)" : ""}` });
   if (!opts?.asDone) {
-    const url = `${appUrl()}/e/${e?.slug}/plan?task=${t!.id}`;
     for (const uid of [owner, ...others].filter(Boolean) as string[]) {
-      const lead = uid === me.id ? (uid === owner ? "You assigned yourself" : "You added yourself to") : uid === owner ? `${me.name} assigned you` : `${me.name} added you to`;
-      await dmUser(uid, `${lead} *${title}* on ${e?.name} (suggested from ${s.sources[0]?.label}). <${url}|Open task>`);
+      await notifyTask({ to: uid, by: me, kind: uid === owner ? "owner" : "assignee", taskId: t!.id, title, dueDate: t!.dueDate, engagementId: s.engagementId,
+        note: s.sources[0]?.label ? `Suggested from ${s.sources[0].label}` : undefined });
     }
   }
   revalidatePath("/", "layout");
