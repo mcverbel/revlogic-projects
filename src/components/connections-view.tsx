@@ -1,5 +1,7 @@
 "use client";
 
+import { SlackTest } from "./slack-test";
+
 import { useState, useTransition } from "react";
 import { disconnect, saveOtterKey, createApiToken, revokeApiToken } from "@/actions/connections";
 import { signInAgain } from "@/actions/reconnect";
@@ -42,6 +44,8 @@ export function ConnectionsView({ isAdmin, company, mine, slackOAuthReady, token
         <Row mono="SL" tone={["#362b45", "#c9a6f2"]} name="Slack workspace app" connected={company.slackApp} reads="Channels mapped to each engagement (internal and client). Also sends task, mention and milestone notifications." meta={company.slackApp ? "Invite the app to each engagement channel" : envNote} action={null} />
         <Row mono="AI" tone={["#1f3340", "#8cc8ee"]} name="Claude API" connected={company.claude} reads="Turns calls, emails and Slack messages into suggested tasks." meta={company.claude ? "Ready" : envNote} action={null} />
       </section>
+
+      <SlackTest />
 
       <section className="flex flex-col gap-3">
         <h2 className="label-mono m-0 font-medium">Mine · only I can connect these</h2>
