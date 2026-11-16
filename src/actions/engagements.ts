@@ -99,6 +99,15 @@ export async function addMember(engagementId: string, userId: string, projectRol
   revalidatePath("/", "layout");
 }
 
+/** Change someone's role or tags on a project. No Slack DM. */
+export async function updateMember(engagementId: string, userId: string, projectRole: string, tags: string[]) {
+  const me = await requireUser();
+  await db.update(engagementMembers).set({ projectRole: projectRole || null, tags })
+    .where(and(eq(engagementMembers.engagementId, engagementId), eq(engagementMembers.userId, userId)));
+  await logActivity({ engagementId, actorId: me.id, entityType: "member", entityId: userId, action: "updated", summary: `updated a team member's role` });
+  revalidatePath("/", "layout");
+}
+
 export async function addMemberByEmail(engagementId: string, email: string, name: string, projectRole: string, tags: string[]) {
   const { invitePerson } = await import("./people");
   const u = await invitePerson(email, name);

@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import type { clientContacts as ccT, users as usersT, engagementMembers as emT } from "@/db/schema";
-import { addMember, addMemberByEmail, removeMember } from "@/actions/engagements";
+import { addMember, addMemberByEmail, removeMember, updateMember } from "@/actions/engagements";
 
 const NEW = "__new";
 import { addContact, updateContact, deleteContact } from "@/actions/people-docs";
-import { Avatar, Empty } from "./ui";
+import { Avatar, Empty, Icon } from "./ui";
 import { PersonPicker } from "./person-picker";
 import { CONTACT_ROLES } from "@/lib/constants";
 
@@ -66,17 +66,7 @@ export function PeopleView({ engagementId, members, contacts, people, openTasksB
           </form>
         )}
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}>
-          {members.map(({ m, u }) => (
-            <div key={u.id} className="card p-4 flex flex-col gap-2.5">
-              <div className="flex items-center gap-3">
-                <Avatar name={u.name} src={u.avatarUrl} size={40} />
-                <div className="flex flex-col min-w-0 flex-1"><span className="font-semibold truncate">{u.name}</span><span className="text-[13px] text-ink-2">{m.projectRole ?? "Team member"}</span></div>
-                <button aria-label={`Remove ${u.name}`} className="text-ink-3 hover:text-red cursor-pointer" onClick={() => start(() => removeMember(engagementId, u.id))}>×</button>
-              </div>
-              {m.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{m.tags.map((t) => <span key={t} className="chip">{t}</span>)}</div>}
-              <span className="text-xs text-ink-3">{openTasksByUser[u.id] ?? 0} open tasks</span>
-            </div>
-          ))}
+          {members.map(({ m, u }) => <MemberCard key={u.id} engagementId={engagementId} m={m} u={u} openTasks={openTasksByUser[u.id] ?? 0} />)}
         </div>
       </div>
 
@@ -112,9 +102,27 @@ export function PeopleView({ engagementId, members, contacts, people, openTasksB
 }
 
 function ContactRow({ ct }: { ct: Contact }) {
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [f, setF] = useState({ name: ct.name, title: ct.title ?? "", email: ct.email ?? "", linkedinUrl: ct.linkedinUrl ?? "" });
   const roles = ct.roles.length ? ct.roles : [""];
   const setRoles = (next: string[]) => start(() => updateContact(ct.id, { roles: next.filter(Boolean) }));
+
+  if (editing) return (
+    <form className="flex flex-wrap items-end gap-2 px-4 py-3 border-b border-line-2 bg-[#2a2c2c]"
+      onSubmit={(e) => { e.preventDefault(); if (!f.name.trim()) return; start(async () => {
+        await updateContact(ct.id, { name: f.name.trim(), title: f.title.trim() || null, email: f.email.trim() || null, linkedinUrl: f.linkedinUrl.trim() || null });
+        setEditing(false);
+      }); }}>
+      <label className="flex flex-col gap-1 text-xs text-ink-3 w-[190px]">Name<input className="field" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></label>
+      <label className="flex flex-col gap-1 text-xs text-ink-3 w-[190px]">Title / role<input className="field" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+      <label className="flex flex-col gap-1 text-xs text-ink-3 w-[220px]">Email<input className="field" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+      <label className="flex flex-col gap-1 text-xs text-ink-3 flex-1 min-w-[200px]">LinkedIn URL<input className="field" value={f.linkedinUrl} onChange={(e) => setF({ ...f, linkedinUrl: e.target.value })} /></label>
+      <button type="button" className="btn btn-ghost min-h-[38px]" onClick={() => { setF({ name: ct.name, title: ct.title ?? "", email: ct.email ?? "", linkedinUrl: ct.linkedinUrl ?? "" }); setEditing(false); }}>Cancel</button>
+      <button className="btn btn-primary min-h-[38px]" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+    </form>
+  );
+
   return (
     <div className="grid grid-cols-[190px_190px_190px_220px_60px_minmax(0,1fr)_30px] gap-3 px-4 py-3 border-b border-line-2 items-start text-[13px]">
       <span className="font-semibold text-[14px]">{ct.name}</span>
@@ -136,7 +144,40 @@ function ContactRow({ ct }: { ct: Contact }) {
       {ct.linkedinUrl ? <a href={ct.linkedinUrl} target="_blank" rel="noreferrer" aria-label={`LinkedIn profile for ${ct.name}`} className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-line-3 font-semibold text-xs no-underline">in</a> : <span className="text-ink-3">—</span>}
       <textarea aria-label={`Notes on ${ct.name}`} className="bg-transparent text-ink-2 leading-snug resize-y border border-transparent hover:border-line-3 rounded p-1 -m-1 min-h-10" defaultValue={ct.notes ?? ""}
         onBlur={(e) => e.target.value !== (ct.notes ?? "") && start(() => updateContact(ct.id, { notes: e.target.value || null }))} />
-      <button aria-label={`Remove ${ct.name}`} className="text-ink-3 hover:text-red cursor-pointer" onClick={() => confirm(`Remove ${ct.name}?`) && start(() => deleteContact(ct.id))}>×</button>
+      <span className="flex flex-col items-center gap-2">
+        <button aria-label={`Edit ${ct.name}`} title="Edit" className="text-ink-3 hover:text-mint cursor-pointer" onClick={() => setEditing(true)}><Icon name="pen" size={15} /></button>
+        <button aria-label={`Remove ${ct.name}`} title="Remove" className="text-ink-3 hover:text-red cursor-pointer" onClick={() => confirm(`Remove ${ct.name}?`) && start(() => deleteContact(ct.id))}>×</button>
+      </span>
+    </div>
+  );
+}
+
+function MemberCard({ engagementId, m, u, openTasks }: { engagementId: string; m: Member["m"]; u: User; openTasks: number }) {
+  const [pending, start] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [role, setRole] = useState(m.projectRole ?? "");
+  const [tags, setTags] = useState(m.tags.join(", "));
+  return (
+    <div className="card p-4 flex flex-col gap-2.5">
+      <div className="flex items-center gap-3">
+        <Avatar name={u.name} src={u.avatarUrl} size={40} />
+        <div className="flex flex-col min-w-0 flex-1"><span className="font-semibold truncate">{u.name}</span>{!editing && <span className="text-[13px] text-ink-2">{m.projectRole ?? "Team member"}</span>}</div>
+        {!editing && <button aria-label={`Edit ${u.name}`} title="Edit" className="text-ink-3 hover:text-mint cursor-pointer" onClick={() => setEditing(true)}><Icon name="pen" size={15} /></button>}
+        <button aria-label={`Remove ${u.name}`} title="Remove" className="text-ink-3 hover:text-red cursor-pointer" onClick={() => confirm(`Remove ${u.name} from this project?`) && start(() => removeMember(engagementId, u.id))}>×</button>
+      </div>
+      {editing ? (
+        <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => {
+          await updateMember(engagementId, u.id, role.trim(), tags.split(",").map((t) => t.trim()).filter(Boolean)); setEditing(false);
+        }); }}>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Role on this engagement<input className="field" value={role} onChange={(e) => setRole(e.target.value)} placeholder="LxD, Facilitator…" autoFocus /></label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Tags (comma-separated)<input className="field" value={tags} onChange={(e) => setTags(e.target.value)} /></label>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn btn-ghost" onClick={() => { setRole(m.projectRole ?? ""); setTags(m.tags.join(", ")); setEditing(false); }}>Cancel</button>
+            <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
+          </div>
+        </form>
+      ) : m.tags.length > 0 && <div className="flex flex-wrap gap-1.5">{m.tags.map((t) => <span key={t} className="chip">{t}</span>)}</div>}
+      <span className="text-xs text-ink-3">{openTasks} open tasks</span>
     </div>
   );
 }
