@@ -12,6 +12,7 @@ import { slugify } from "@/lib/format";
 import { journeyLabel } from "@/lib/constants";
 import { dmUser, postToChannel } from "@/lib/slack";
 import { appUrl } from "@/lib/app-url";
+import { addRevsTo } from "@/lib/frameworks";
 
 const CreateSchema = z.object({
   clientName: z.string().min(1),
@@ -33,6 +34,8 @@ const CreateSchema = z.object({
 export async function createEngagement(formData: FormData) {
   const me = await requireUser();
   const d = CreateSchema.parse(Object.fromEntries(formData));
+  const revs = formData.getAll("revs").map(String);
+  const withTasks = formData.get("withTasks") === "on";
   const domain = d.clientDomain?.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null;
 
   let client = await db.query.clients.findFirst({ where: eq(clients.name, d.clientName.trim()) });
@@ -62,6 +65,7 @@ export async function createEngagement(formData: FormData) {
   if (sources.length) await db.insert(engagementSources).values(sources.map((s) => ({ ...s, engagementId: e!.id }))).onConflictDoNothing();
 
   await logActivity({ engagementId: e!.id, actorId: me.id, entityType: "engagement", entityId: e!.id, action: "created", summary: `created the ${d.category === "engagement" ? "engagement" : d.category === "partner" ? "partner project" : d.category === "creative_video" ? "video project" : "graphic design project"}` });
+  if (revs.length) await addRevsTo(e!.id, revs, { startDate: d.startDate || null, withTasks }, me.id);
   revalidatePath("/", "layout");
   redirect(`/e/${e!.slug}`);
 }

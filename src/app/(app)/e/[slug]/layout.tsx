@@ -4,6 +4,8 @@ import { JourneyBar } from "@/components/journey-bar";
 import { Tabs } from "@/components/tabs";
 import { fmtDate, initials } from "@/lib/format";
 import { categoryOf } from "@/lib/constants";
+import { frameworkCounts } from "@/lib/frameworks";
+import { EngagementRevs } from "@/components/rev-picker";
 
 const HEALTH: Record<string, [string, string, string]> = {
   on_track: ["#1f3a2c", "#8be3b7", "On track"], at_risk: ["#43361f", "#f2c27b", "At risk"], off_track: ["#452326", "#ff8a80", "Off track"],
@@ -11,7 +13,8 @@ const HEALTH: Record<string, [string, string, string]> = {
 
 export default async function EngagementLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { e, client, tasks, suggestions, members, contacts, docs } = await loadEngagement(slug);
+  const { e, client, tasks, suggestions, members, contacts, docs, revs } = await loadEngagement(slug);
+  const counts = await frameworkCounts();
   const [hbg, hfg, hlabel] = HEALTH[e.health ?? "on_track"] ?? HEALTH.on_track!;
   const slackUrl = (id: string) => `https://slack.com/app_redirect?channel=${id}`;
   const cat = categoryOf(e.category);
@@ -28,7 +31,9 @@ export default async function EngagementLayout({ children, params }: { children:
               <div className="flex flex-wrap items-center gap-2.5 text-[13px] text-ink-2">
                 <span>{client.name}</span>
                 {(e.startDate || e.endDate) && <><span className="text-[#5a5e5c]">|</span><span>{fmtDate(e.startDate)} – {fmtDate(e.endDate)}</span></>}
-                {e.serviceLine && <span className="chip">{e.serviceLine}</span>}
+                {isEng
+                  ? <EngagementRevs engagementId={e.id} revs={revs} counts={counts} startDate={e.startDate} />
+                  : e.serviceLine && <span className="chip">{e.serviceLine}</span>}
                 <span className="pill" style={{ background: hbg, color: hfg }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: hfg }} />{hlabel}</span>
               </div>
             </div>

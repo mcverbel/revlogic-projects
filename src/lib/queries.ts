@@ -1,9 +1,10 @@
 import { db } from "@/db";
 import {
   engagements, clients, engagementMembers, users, tasks, taskAssignees, userTaskPrefs, suggestions,
-  activityLog, comments, taskLinks, documents, clientContacts, phases, engagementSources,
+  activityLog, comments, taskLinks, documents, clientContacts, phases, engagementSources, engagementRevs,
 } from "@/db/schema";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { REV_IDS } from "@/lib/constants";
 
 export type UserLite = { id: string; name: string; email: string; avatarUrl: string | null };
 
@@ -55,6 +56,8 @@ export async function getEngagement(slug: string, meId: string) {
     db.select().from(engagementSources).where(eq(engagementSources.engagementId, e.id)),
     allUsers(),
   ]);
+  const revs = (await db.select().from(engagementRevs).where(eq(engagementRevs.engagementId, e.id)))
+    .sort((a, b) => REV_IDS.indexOf(a.rev) - REV_IDS.indexOf(b.rev));
   const taskIds = taskRows.map((t) => t.id);
   const [assignees, prefs, links, commentRows] = taskIds.length
     ? await Promise.all([
@@ -71,7 +74,7 @@ export async function getEngagement(slug: string, meId: string) {
     links: links.filter((l) => l.taskId === t.id),
     comments: commentRows.filter((c) => c.taskId === t.id),
   }));
-  return { e, client: client!, members, contacts, docs, phases: phaseRows, tasks: fullTasks, suggestions: sugg, activity, sources, people };
+  return { e, client: client!, members, contacts, docs, phases: phaseRows, tasks: fullTasks, suggestions: sugg, activity, sources, people, revs };
 }
 
 export type EngagementData = NonNullable<Awaited<ReturnType<typeof getEngagement>>>;

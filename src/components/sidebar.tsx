@@ -119,6 +119,7 @@ export function Sidebar({ me, engagements }: { me: { name: string; email: string
       })}
 
       <div className="label-mono px-3.5 pt-5 pb-2">System</div>
+      <NavLink href="/frameworks" icon="layers" label="REV frameworks" active={pathname.startsWith("/frameworks")} />
       <NavLink href="/connections" icon="plug" label="Connections" active={pathname.startsWith("/connections")} />
 
       <div className="mt-auto pt-6 px-3.5 flex items-center gap-2.5">

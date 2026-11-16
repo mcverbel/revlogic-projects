@@ -3,12 +3,14 @@ import { createEngagement } from "@/actions/engagements";
 import { allUsers } from "@/lib/queries";
 import { JOURNEY, CATEGORIES, categoryOf } from "@/lib/constants";
 import { requireUser } from "@/lib/session";
+import { frameworkCounts } from "@/lib/frameworks";
+import { RevField } from "@/components/rev-picker";
 
 export default async function NewEngagement({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
   const me = await requireUser();
   const cat = categoryOf((await searchParams).category);
   const isEng = cat.id === "engagement";
-  const people = await allUsers();
+  const [people, counts] = await Promise.all([allUsers(), frameworkCounts()]);
   const F = ({ label, name, placeholder, type = "text", hint }: { label: string; name: string; placeholder?: string; type?: string; hint?: string }) => (
     <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">{label}<input className="field" name={name} type={type} placeholder={placeholder} />{hint && <span className="text-xs text-ink-3">{hint}</span>}</label>
   );
@@ -22,7 +24,7 @@ export default async function NewEngagement({ searchParams }: { searchParams: Pr
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">{cat.id === "partner" ? "Partner name *" : isEng ? "Client name *" : "Client or team *"}<input className="field" name="clientName" required placeholder={cat.id === "partner" ? "Peppr.ai" : isEng ? "HiddenLayer" : "revlogic Marketing"} /></label>
         <F label="Client email domain" name="clientDomain" placeholder="hiddenlayer.com" hint="Emails with this domain feed Suggested tasks." />
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">{isEng ? "Engagement name *" : "Project name *"}<input className="field" name="name" required placeholder={isEng ? "SKO Sales Training" : "Project name"} /></label>
-        <F label="revlogic service" name="serviceLine" placeholder="e.g. valueREV, dealREV, SKO" />
+        {isEng && <RevField counts={counts} />}
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">Where it is now
           <select className="field" name="journeyStage" defaultValue="stage_0">{JOURNEY.map((j) => <option key={j.id} value={j.id}>{j.label}</option>)}</select>
         </label>

@@ -239,3 +239,30 @@ export const apiTokens = pgTable("api_tokens", {
   lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// REVs (service lines) worked on each engagement. One row per REV.
+export const engagementRevs = pgTable("engagement_revs", {
+  engagementId: uuid("engagement_id").references(() => engagements.id, { onDelete: "cascade" }).notNull(),
+  rev: text("rev").notNull(),
+  frameworkAppliedAt: timestamp("framework_applied_at", { withTimezone: true }),
+  addedBy: uuid("added_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [primaryKey({ columns: [t.engagementId, t.rev] })]);
+
+// The standard framework for each REV: milestones and the tasks that lead to each one, in order.
+// Loaded by an admin from the frameworks spreadsheet.
+export const frameworkSteps = pgTable("framework_steps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  rev: text("rev").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  kind: text("kind").notNull(), // milestone | task
+  number: text("number"),
+  title: text("title").notNull(),
+  durationWeeks: integer("duration_weeks").notNull().default(1),
+  repeats: text("repeats"),
+  ownerRole: text("owner_role"),
+  clientInput: text("client_input"),
+  output: text("output"),
+  uploadedBy: uuid("uploaded_by").references(() => users.id),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("framework_steps_rev").on(t.rev, t.sortOrder)]);

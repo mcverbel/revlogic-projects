@@ -15,6 +15,13 @@
       "when": 1794251895893,
       "tag": "0001_closed_meteorite",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794865929878,
+      "tag": "0002_engagement_revs",
+      "breakpoints": true
     }
   ]
 }

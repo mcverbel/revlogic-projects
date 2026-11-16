@@ -98,3 +98,18 @@ export const DOC_TYPES = {
 export const DOC_SOURCES = ["Google Slides", "Google Docs", "Google Sheets", "PDF", "Recording", "Gmail", "Figma", "Other"];
 
 export const DEPARTMENTS = ["Sales", "Delivery", "LxD", "Creative", "Finance", "Marketing", "Operations"];
+
+/** revlogic's standard services. Each can have a framework of milestones and tasks. */
+export const REVS = [
+  { id: "pipelineREV", label: "pipelineREV", blurb: "Prospecting & pipeline" },
+  { id: "dealREV", label: "dealREV", blurb: "Discovery & deal execution" },
+  { id: "growthREV", label: "growthREV", blurb: "Account growth & expansion" },
+  { id: "rampREV", label: "rampREV", blurb: "Onboarding & readiness" },
+  { id: "partnerREV", label: "partnerREV", blurb: "Partner enablement" },
+  { id: "leaderREV", label: "leaderREV", blurb: "Leadership enablement" },
+  { id: "valueREV", label: "valueREV", blurb: "Value messaging" },
+  { id: "roiREV", label: "roiREV", blurb: "Business cases & ROI" },
+  { id: "SKO", label: "SKO", blurb: "Sales kickoff & field activation" },
+  { id: "AI Solutions", label: "AI Solutions", blurb: "AI agents & workflows" },
+] as const;
+export const REV_IDS = REVS.map((r) => r.id) as string[];
