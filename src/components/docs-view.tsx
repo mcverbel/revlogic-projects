@@ -1,7 +1,7 @@
 "use client";
 
 import { PersonPicker } from "./person-picker";
-import { DriveFolder } from "./drive-folder";
+import { FolderContents, TINT, type DriveItem } from "./drive-folder";
 
 import { useState, useTransition } from "react";
 import type { documents as docsT, users as usersT } from "@/db/schema";
@@ -13,10 +13,6 @@ import { fmtDate } from "@/lib/format";
 type Doc = typeof docsT.$inferSelect;
 type User = typeof usersT.$inferSelect;
 
-const TINT: Record<string, [string, string]> = {
-  "Google Slides": ["#43361f", "#f2c27b"], "Google Docs": ["#23392f", "#8be3b7"], "Google Sheets": ["#1f3a2c", "#7fdcae"],
-  PDF: ["#452326", "#ff8a80"], Recording: ["#362b45", "#c9a6f2"], Gmail: ["#373a39", "#d5d8d6"], "Drive folder": ["#22323d", "#8cc4f2"],
-};
 const CAT = { governance: { label: "Governance & Alignment", hint: "SOWs, contracts, kickoff decks, call recordings and email threads." }, deliverable: { label: "Deliverables & Client Assets", hint: "Decks, templates, workshops and custom content made for the client." } };
 const folderId = (url: string) => url.match(/\/folders\/([A-Za-z0-9_-]{10,})/)?.[1] ?? null;
 const previewUrl = (url: string) => { const id = url.match(/\/d\/([A-Za-z0-9_-]{20,})/)?.[1]; return id ? `https://drive.google.com/file/d/${id}/preview` : null; };
@@ -25,6 +21,10 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
   const [cat, setCat] = useState<"governance" | "deliverable">("governance");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [open, setOpen] = useState<Doc | null>(null);
+  // A Drive folder opened inside the tab: the saved folder, plus the subfolders clicked into
+  const [inFolder, setInFolder] = useState<{ doc: Doc; path: { id: string; name: string }[] } | null>(null);
+  const [file, setFile] = useState<DriveItem | null>(null);
+  const openDoc = (d: Doc) => { const fid = folderId(d.url); if (fid) setInFolder({ doc: d, path: [{ id: fid, name: d.title }] }); else setOpen(d); };
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ url: "", title: "", docType: "", notes: "" });
   const [pending, start] = useTransition();
@@ -36,7 +36,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="seg">
           {(["governance", "deliverable"] as const).map((c) => (
-            <button key={c} aria-pressed={cat === c} onClick={() => setCat(c)}>{CAT[c].label} <span className="text-xs text-ink-3">{docs.filter((d) => d.category === c).length}</span></button>
+            <button key={c} aria-pressed={cat === c} onClick={() => { setCat(c); setInFolder(null); }}>{CAT[c].label} <span className="text-xs text-ink-3">{docs.filter((d) => d.category === c).length}</span></button>
           ))}
         </div>
         <div className="flex items-center gap-2">
@@ -59,14 +59,38 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
         </form>
       )}
 
-      {shown.length === 0 && <div className="card"><Empty>No documents here yet.</Empty></div>}
-      {view === "grid" ? (
+      {inFolder && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <nav aria-label="Folder path" className="flex flex-wrap items-center gap-1.5 text-[14px] text-ink-3">
+              <button className="hover:text-ink hover:underline underline-offset-2" onClick={() => setInFolder(null)}>{CAT[cat].label}</button>
+              {inFolder.path.map((p, i) => (
+                <span key={p.id} className="inline-flex items-center gap-1.5">
+                  <Icon name="chevron" size={14} className="-rotate-90" />
+                  {i < inFolder.path.length - 1
+                    ? <button className="hover:text-ink hover:underline underline-offset-2" onClick={() => setInFolder({ ...inFolder, path: inFolder.path.slice(0, i + 1) })}>{p.name}</button>
+                    : <span className="text-ink font-semibold inline-flex items-center gap-1.5"><Icon name="folder" size={16} />{p.name}</span>}
+                </span>
+              ))}
+            </nav>
+            <div className="flex items-center gap-2">
+              <a className="btn btn-ghost no-underline" target="_blank" rel="noreferrer" href={`https://drive.google.com/drive/folders/${inFolder.path.at(-1)!.id}`}>Open in Drive</a>
+              <button className="btn btn-ghost" onClick={() => setOpen(inFolder.doc)}>Folder details</button>
+            </div>
+          </div>
+          <FolderContents key={inFolder.path.at(-1)!.id} folderId={inFolder.path.at(-1)!.id} view={view} onOpenFile={setFile}
+            onPath={(f) => setInFolder({ ...inFolder, path: [...inFolder.path, f] })} />
+        </>
+      )}
+
+      {!inFolder && shown.length === 0 && <div className="card"><Empty>No documents here yet.</Empty></div>}
+      {inFolder ? null : view === "grid" ? (
         <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
           {shown.map((d) => {
             const [bg, fg] = TINT[d.source ?? ""] ?? ["#373a39", "#d5d8d6"];
             return (
-              <button key={d.id} onClick={() => setOpen(d)} className="card p-0 overflow-hidden text-left cursor-pointer flex flex-col hover:border-line-3">
-                <span className="h-[92px] w-full flex items-end gap-1.5 px-3.5 py-3 box-border text-xs font-semibold" style={{ background: bg, color: fg }}>{folderId(d.url) && <Icon name="folder" size={15} />}{folderId(d.url) ? "Drive folder · open to see files" : d.source ?? "Link"}</span>
+              <button key={d.id} onClick={() => openDoc(d)} className="card p-0 overflow-hidden text-left cursor-pointer flex flex-col hover:border-line-3">
+                <span className="h-[92px] w-full flex items-end gap-1.5 px-3.5 py-3 box-border text-xs font-semibold" style={{ background: bg, color: fg }}>{folderId(d.url) && <Icon name="folder" size={15} />}{folderId(d.url) ? "Folder" : d.source ?? "Link"}</span>
                 <span className="px-3.5 pt-3 pb-3.5 flex flex-col gap-1.5 w-full box-border">
                   {d.docType && <span className="label-mono text-[11px] tracking-wider">{d.docType}</span>}
                   <span className="font-semibold text-[14px] leading-snug">{d.title}</span>
@@ -81,8 +105,8 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
         <div className="card overflow-x-auto"><div className="min-w-[820px]">
           <div className="grid grid-cols-[minmax(0,1fr)_140px_130px_110px_140px_90px] gap-3 px-4 py-3 text-xs font-semibold text-ink-3 border-b border-line"><span>Document</span><span>Type</span><span>Source</span><span>Status</span><span>Owner</span><span>Updated</span></div>
           {shown.map((d) => (
-            <button key={d.id} onClick={() => setOpen(d)} className="grid w-full text-left grid-cols-[minmax(0,1fr)_140px_130px_110px_140px_90px] gap-3 px-4 py-3 border-b border-line-2 items-center cursor-pointer hover:bg-[#2f3131] text-[13px]">
-              <span className="font-semibold text-[14px]">{d.title}</span><span className="text-ink-2">{d.docType}</span><span className="text-ink-2">{d.source}</span>
+            <button key={d.id} onClick={() => openDoc(d)} className="grid w-full text-left grid-cols-[minmax(0,1fr)_140px_130px_110px_140px_90px] gap-3 px-4 py-3 border-b border-line-2 items-center cursor-pointer hover:bg-[#2f3131] text-[13px]">
+              <span className="font-semibold text-[14px] inline-flex items-center gap-2">{folderId(d.url) && <Icon name="folder" size={16} className="text-ink-3" />}{d.title}</span><span className="text-ink-2">{d.docType}</span><span className="text-ink-2">{d.source}</span>
               <span><span className="chip">{d.status ?? "Draft"}</span></span><span className="text-ink-2">{owner(d.ownerId)}</span><span className="text-ink-3">{fmtDate(d.updatedAt)}</span>
             </button>
           ))}
@@ -98,7 +122,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
               <button onClick={() => setOpen(null)} aria-label="Close" className="btn btn-ghost w-11 h-11 justify-center p-0"><Icon name="x" size={18} /></button>
             </div>
             {folderId(open.url)
-              ? <DriveFolder folderId={folderId(open.url)!} name={open.title} />
+              ? null
               : previewUrl(open.url)
               ? <iframe title={`Preview of ${open.title}`} src={previewUrl(open.url)!} className="w-full h-[300px] rounded-lg border border-line bg-bg" />
               : <div className="h-[120px] rounded-lg border border-line flex items-center justify-center text-ink-3 text-[13px]">No preview for this link type</div>}
@@ -116,6 +140,20 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
               <textarea className="field font-normal text-[14px]" rows={4} defaultValue={open.notes ?? ""} onBlur={(e) => e.target.value !== (open.notes ?? "") && start(() => updateDocument(open.id, { notes: e.target.value || null }))} />
             </label>
             <button className="btn btn-quiet self-start hover:text-red" onClick={() => { if (confirm("Remove this document from the engagement? The file itself is not deleted.")) start(async () => { await deleteDocument(open.id); setOpen(null); }); }}>Remove from engagement</button>
+          </aside>
+        </div>
+      )}
+      {file && (
+        <div className="fixed inset-0 z-30 flex justify-end">
+          <button aria-label="Close file" className="absolute inset-0 bg-[rgba(10,12,11,0.6)] cursor-pointer" onClick={() => setFile(null)} />
+          <aside aria-label="File preview" className="relative w-[560px] max-w-full h-full bg-panel overflow-y-auto box-border px-6 pt-5 pb-8 flex flex-col gap-4 shadow-[-8px_0_24px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1.5"><span className="text-xs text-ink-3">{file.source}{file.modifiedTime ? ` · Updated ${fmtDate(file.modifiedTime)}` : ""}</span><h2 className="m-0 text-xl font-semibold break-words">{file.name}</h2></div>
+              <button onClick={() => setFile(null)} aria-label="Close" className="btn btn-ghost w-11 h-11 justify-center p-0"><Icon name="x" size={18} /></button>
+            </div>
+            <iframe title={`Preview of ${file.name}`} src={`https://drive.google.com/file/d/${file.id}/preview`} className="w-full h-[420px] rounded-lg border border-line bg-bg" />
+            <a href={file.url} target="_blank" rel="noreferrer" className="btn btn-primary self-start no-underline">Open in Drive</a>
+            <p className="m-0 text-xs text-ink-3">This file lives in the {inFolder?.path.at(-1)?.name ?? "linked"} folder in Google Drive.</p>
           </aside>
         </div>
       )}
