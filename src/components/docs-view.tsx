@@ -1,6 +1,7 @@
 "use client";
 
 import { PersonPicker } from "./person-picker";
+import { DriveFolder } from "./drive-folder";
 
 import { useState, useTransition } from "react";
 import type { documents as docsT, users as usersT } from "@/db/schema";
@@ -14,9 +15,10 @@ type User = typeof usersT.$inferSelect;
 
 const TINT: Record<string, [string, string]> = {
   "Google Slides": ["#43361f", "#f2c27b"], "Google Docs": ["#23392f", "#8be3b7"], "Google Sheets": ["#1f3a2c", "#7fdcae"],
-  PDF: ["#452326", "#ff8a80"], Recording: ["#362b45", "#c9a6f2"], Gmail: ["#373a39", "#d5d8d6"],
+  PDF: ["#452326", "#ff8a80"], Recording: ["#362b45", "#c9a6f2"], Gmail: ["#373a39", "#d5d8d6"], "Drive folder": ["#22323d", "#8cc4f2"],
 };
 const CAT = { governance: { label: "Governance & Alignment", hint: "SOWs, contracts, kickoff decks, call recordings and email threads." }, deliverable: { label: "Deliverables & Client Assets", hint: "Decks, templates, workshops and custom content made for the client." } };
+const folderId = (url: string) => url.match(/\/folders\/([A-Za-z0-9_-]{10,})/)?.[1] ?? null;
 const previewUrl = (url: string) => { const id = url.match(/\/d\/([A-Za-z0-9_-]{20,})/)?.[1]; return id ? `https://drive.google.com/file/d/${id}/preview` : null; };
 
 export function DocsView({ engagementId, docs, people }: { engagementId: string; docs: Doc[]; people: User[] }) {
@@ -47,7 +49,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
       {adding && (
         <form className="card p-4 grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}
           onSubmit={(e) => { e.preventDefault(); start(async () => { await addDocument(engagementId, { ...form, category: cat }); setAdding(false); setForm({ url: "", title: "", docType: "", notes: "" }); }); }}>
-          <input className="field col-span-full" required placeholder="Paste a Google Drive, Gmail, recording or any link" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} aria-label="Document link" />
+          <input className="field col-span-full" required placeholder="Paste a file link, a whole Google Drive folder, a Gmail thread or any link" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} aria-label="Document link" />
           <input className="field" placeholder="Title (filled from Drive if blank)" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} aria-label="Title" />
           <select className="field" value={form.docType} onChange={(e) => setForm({ ...form, docType: e.target.value })} aria-label="Type">
             <option value="">Type…</option>{DOC_TYPES[cat].map((t) => <option key={t}>{t}</option>)}
@@ -64,7 +66,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
             const [bg, fg] = TINT[d.source ?? ""] ?? ["#373a39", "#d5d8d6"];
             return (
               <button key={d.id} onClick={() => setOpen(d)} className="card p-0 overflow-hidden text-left cursor-pointer flex flex-col hover:border-line-3">
-                <span className="h-[92px] w-full flex items-end px-3.5 py-3 box-border text-xs font-semibold" style={{ background: bg, color: fg }}>{d.source ?? "Link"}</span>
+                <span className="h-[92px] w-full flex items-end gap-1.5 px-3.5 py-3 box-border text-xs font-semibold" style={{ background: bg, color: fg }}>{folderId(d.url) && <Icon name="folder" size={15} />}{folderId(d.url) ? "Drive folder · open to see files" : d.source ?? "Link"}</span>
                 <span className="px-3.5 pt-3 pb-3.5 flex flex-col gap-1.5 w-full box-border">
                   {d.docType && <span className="label-mono text-[11px] tracking-wider">{d.docType}</span>}
                   <span className="font-semibold text-[14px] leading-snug">{d.title}</span>
@@ -95,10 +97,12 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
               <div className="flex flex-col gap-1.5"><span className="text-xs text-ink-3">{CAT[open.category].label}{open.docType ? ` · ${open.docType}` : ""}</span><h2 className="m-0 text-xl font-semibold">{open.title}</h2></div>
               <button onClick={() => setOpen(null)} aria-label="Close" className="btn btn-ghost w-11 h-11 justify-center p-0"><Icon name="x" size={18} /></button>
             </div>
-            {previewUrl(open.url)
+            {folderId(open.url)
+              ? <DriveFolder folderId={folderId(open.url)!} name={open.title} />
+              : previewUrl(open.url)
               ? <iframe title={`Preview of ${open.title}`} src={previewUrl(open.url)!} className="w-full h-[300px] rounded-lg border border-line bg-bg" />
               : <div className="h-[120px] rounded-lg border border-line flex items-center justify-center text-ink-3 text-[13px]">No preview for this link type</div>}
-            <a href={open.url} target="_blank" rel="noreferrer" className="btn btn-primary self-start no-underline">Open {open.source ?? "link"}</a>
+            <a href={open.url} target="_blank" rel="noreferrer" className="btn btn-primary self-start no-underline">{folderId(open.url) ? "Open folder in Drive" : `Open ${open.source ?? "link"}`}</a>
             <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 text-[13px] items-center">
               <span className="text-ink-3">Status</span>
               <select className="field" defaultValue={open.status ?? "Draft"} onChange={(e) => start(() => updateDocument(open.id, { status: e.target.value }))}>

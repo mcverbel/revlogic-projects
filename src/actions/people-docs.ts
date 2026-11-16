@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { clientContacts, documents, engagementSources } from "@/db/schema";
 import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
-import { driveMetadata } from "@/lib/sources/google";
+import { driveMetadata, driveFolderItems } from "@/lib/sources/google";
 
 export async function addContact(engagementId: string, c: { name: string; title?: string; email?: string; linkedinUrl?: string; roles?: string[]; notes?: string }) {
   const me = await requireUser();
@@ -43,7 +43,7 @@ export async function addDocument(engagementId: string, d: { category: "governan
   const meta = await driveMetadata(me.id, d.url.trim()).catch(() => null);
   await db.insert(documents).values({
     engagementId, category: d.category, url: d.url.trim(),
-    title: d.title?.trim() || meta?.name || d.url.trim(),
+    title: d.title?.trim() || meta?.name || (meta?.source === "Drive folder" ? "Drive folder" : d.url.trim()),
     docType: d.docType || null, source: d.source || meta?.source || null, driveFileId: meta?.id ?? null,
     status: d.status || "Draft", notes: d.notes || null, ownerId: me.id, createdBy: me.id,
   });
@@ -61,4 +61,11 @@ export async function deleteDocument(id: string) {
   await requireUser();
   await db.delete(documents).where(eq(documents.id, id));
   revalidatePath("/", "layout");
+}
+
+/** Files and subfolders inside a Drive folder, read live with the viewer's Google access. */
+export async function listDriveFolder(folderId: string) {
+  const me = await requireUser();
+  if (!/^[A-Za-z0-9_-]{10,}$/.test(folderId)) return { ok: false as const, reason: "no_access" as const };
+  return driveFolderItems(me.id, folderId);
 }

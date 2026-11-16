@@ -39,16 +39,51 @@ const MIME: Record<string, string> = {
   "application/vnd.google-apps.spreadsheet": "Google Sheets",
   "application/pdf": "PDF",
 };
+export const FOLDER_SOURCE = "Drive folder";
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const sourceOf = (mime: string) => (mime === FOLDER_MIME ? FOLDER_SOURCE : MIME[mime] ?? (mime.startsWith("video/") ? "Recording" : mime.startsWith("image/") ? "Image" : "Other"));
+
+/** Folder links look like drive.google.com/drive/folders/<id> (sometimes with /u/0/ in the middle). */
+export function driveFolderId(url: string) {
+  return url.match(/\/folders\/([A-Za-z0-9_-]{10,})/)?.[1] ?? null;
+}
 export function driveFileId(url: string) {
-  return url.match(/\/d\/([A-Za-z0-9_-]{20,})/)?.[1] ?? url.match(/[?&]id=([A-Za-z0-9_-]{20,})/)?.[1] ?? null;
+  return driveFolderId(url) ?? url.match(/\/d\/([A-Za-z0-9_-]{20,})/)?.[1] ?? url.match(/[?&]id=([A-Za-z0-9_-]{20,})/)?.[1] ?? null;
 }
 export async function driveMetadata(userId: string, url: string) {
   const id = driveFileId(url);
   if (!id) return null;
   const token = await googleAccessToken(userId);
-  if (!token) return null;
+  if (!token) return driveFolderId(url) ? { id, name: null, source: FOLDER_SOURCE } : null;
   const f = await g<{ id: string; name: string; mimeType: string }>(token, `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,mimeType&supportsAllDrives=true`);
-  return { id: f.id, name: f.name, source: MIME[f.mimeType] ?? (f.mimeType.startsWith("video/") ? "Recording" : "Other") };
+  return { id: f.id, name: f.name, source: sourceOf(f.mimeType) };
+}
+
+export type DriveItem = { id: string; name: string; source: string; isFolder: boolean; url: string; modifiedTime: string | null };
+
+/** Everything directly inside a Drive folder, folders first. Read live with the viewer's own Google access. */
+export async function driveFolderItems(userId: string, folderId: string): Promise<{ ok: true; items: DriveItem[] } | { ok: false; reason: "no_google" | "no_access" }> {
+  const token = await googleAccessToken(userId);
+  if (!token) return { ok: false, reason: "no_google" };
+  const items: DriveItem[] = [];
+  let pageToken = "";
+  try {
+    for (let i = 0; i < 5; i++) {
+      const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+      const r = await g<{ files: { id: string; name: string; mimeType: string; webViewLink?: string; modifiedTime?: string }[]; nextPageToken?: string }>(token,
+        `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=folder,name&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true&fields=nextPageToken,files(id,name,mimeType,webViewLink,modifiedTime)${pageToken ? `&pageToken=${pageToken}` : ""}`);
+      for (const f of r.files) {
+        const isFolder = f.mimeType === FOLDER_MIME;
+        items.push({ id: f.id, name: f.name, source: sourceOf(f.mimeType), isFolder, modifiedTime: f.modifiedTime ?? null,
+          url: f.webViewLink ?? (isFolder ? `https://drive.google.com/drive/folders/${f.id}` : `https://drive.google.com/file/d/${f.id}/view`) });
+      }
+      if (!r.nextPageToken) break;
+      pageToken = r.nextPageToken;
+    }
+  } catch {
+    return { ok: false, reason: "no_access" };
+  }
+  return { ok: true, items };
 }
 export function drivePreviewUrl(url: string) {
   const id = driveFileId(url);
