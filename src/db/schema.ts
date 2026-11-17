@@ -115,6 +115,8 @@ export const tasks = pgTable("tasks", {
   startDate: date("start_date"),
   dueDate: date("due_date"),
   isMilestone: boolean("is_milestone").notNull().default(false),
+  accountOwnerId: uuid("account_owner_id").references(() => users.id),
+  statusOptionId: uuid("status_option_id"),
   waitingOnClient: boolean("waiting_on_client").notNull().default(false),
   sourceSuggestionId: uuid("source_suggestion_id"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -266,3 +268,27 @@ export const frameworkSteps = pgTable("framework_steps", {
   uploadedBy: uuid("uploaded_by").references(() => users.id),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [index("framework_steps_rev").on(t.rev, t.sortOrder)]);
+
+// Board-specific dropdown options (Graphic Design board): contractors (a person + color) and statuses (label + color).
+export const boardOptions = pgTable("board_options", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id, { onDelete: "cascade" }).notNull(),
+  field: text("field").notNull(), // contractor | status
+  label: text("label").notNull(),
+  color: text("color"),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("board_options_eng").on(t.engagementId, t.field)]);
+
+// Branding Templates tab: one row per client with free-text notes (links to brand assets and templates).
+export const brandClients = pgTable("brand_clients", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  notes: text("notes"),
+  isPast: boolean("is_past").notNull().default(false),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { clients, engagements, phases } from "@/db/schema";
 import { requireUser } from "@/lib/session";
 import { CREATIVE_BOARDS } from "@/lib/constants";
+import { ensureDesignBoard, isDesignBoard } from "@/lib/design-board";
 
 /** Each Creative bucket has one shared board. Opening the bucket opens its board's task list (created on first visit). */
 export default async function CreativeBucket({ params }: { params: Promise<{ bucket: string }> }) {
@@ -23,5 +24,6 @@ export default async function CreativeBucket({ params }: { params: Promise<{ buc
     e ??= await db.query.engagements.findFirst({ where: eq(engagements.slug, board.slug) });
     if (e) await db.insert(phases).values({ engagementId: e.id, name: "Open requests", sortOrder: 0 }).onConflictDoNothing();
   }
+  if (e && isDesignBoard(e.slug)) await ensureDesignBoard(e.id);
   redirect(`/e/${board.slug}/plan`);
 }

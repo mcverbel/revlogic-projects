@@ -26,3 +26,24 @@ export function Tabs({ slug, counts }: { slug: string; counts: { plan: number; s
     </nav>
   );
 }
+
+/** The Graphic Design board's own tabs. */
+export function DesignTabs({ slug, counts }: { slug: string; counts: { open: number; done: number; clients: number } }) {
+  const p = usePathname();
+  const base = `/e/${slug}`;
+  const tabs = [
+    { href: `${base}/plan`, label: "Tasks", count: counts.open, on: p.startsWith(`${base}/plan`) || p === base },
+    { href: `${base}/completed`, label: "Completed", count: counts.done, on: p.startsWith(`${base}/completed`) },
+    { href: `${base}/brand`, label: "Branding Templates", count: counts.clients, on: p.startsWith(`${base}/brand`) },
+  ];
+  return (
+    <nav aria-label="Graphic Design sections" className="flex flex-wrap gap-1 border-b border-line">
+      {tabs.map((t) => (
+        <Link key={t.href} href={t.href} aria-current={t.on ? "page" : undefined}
+          className={`min-h-11 px-3.5 inline-flex items-center gap-1.5 no-underline text-[14px] ${t.on ? "text-ink font-semibold shadow-[inset_0_-2px_0_#7fdcae]" : "text-ink-2 hover:text-ink"}`}>
+          {t.label}<span className="text-xs text-ink-3">{t.count}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}

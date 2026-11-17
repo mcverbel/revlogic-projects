@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { isDesignBoard } from "@/lib/design-board";
 import { loadEngagement } from "@/lib/load";
 import { Avatar } from "@/components/ui";
 import { fmtDate, timeAgo, todayISO } from "@/lib/format";
@@ -7,6 +9,7 @@ import { listEngagements } from "@/lib/queries";
 
 export default async function Overview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  if (isDesignBoard(slug)) redirect(`/e/${slug}/plan`);
   const { e, tasks, members, contacts, activity, people, sources } = await loadEngagement(slug);
   const others = (await listEngagements()).filter((r) => r.e.id !== e.id).map((r) => ({ id: r.e.id, label: `${r.client.name} · ${r.e.name}` }));
   const done = tasks.filter((t) => t.status === "done").length;

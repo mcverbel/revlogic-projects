@@ -1,7 +1,8 @@
 import { loadEngagement } from "@/lib/load";
 import { Icon } from "@/components/ui";
 import { JourneyBar } from "@/components/journey-bar";
-import { Tabs } from "@/components/tabs";
+import { Tabs, DesignTabs } from "@/components/tabs";
+import { isDesignBoard, loadDesignBoard } from "@/lib/design-board";
 import { fmtDate, initials } from "@/lib/format";
 import { categoryOf } from "@/lib/constants";
 import { frameworkCounts } from "@/lib/frameworks";
@@ -15,6 +16,7 @@ export default async function EngagementLayout({ children, params }: { children:
   const { slug } = await params;
   const { e, client, tasks, suggestions, members, contacts, docs, revs } = await loadEngagement(slug);
   const counts = await frameworkCounts();
+  const design = isDesignBoard(e.slug) ? await loadDesignBoard(e.id) : null;
   const [hbg, hfg, hlabel] = HEALTH[e.health ?? "on_track"] ?? HEALTH.on_track!;
   const slackUrl = (id: string) => `https://slack.com/app_redirect?channel=${id}`;
   const cat = categoryOf(e.category);
@@ -46,10 +48,14 @@ export default async function EngagementLayout({ children, params }: { children:
           </div>
         </div>
         {isEng && <JourneyBar engagementId={e.id} stage={e.journeyStage} synced={!!e.aurasellOpportunityId} />}
-        <Tabs slug={e.slug} counts={{
+        {design ? (
+          <DesignTabs slug={e.slug} counts={{ open: tasks.filter((t) => t.status !== "done").length, done: tasks.filter((t) => t.status === "done").length, clients: design.brand.length }} />
+        ) : (
+          <Tabs slug={e.slug} counts={{
           plan: tasks.length, suggested: suggestions.filter((s) => s.status === "pending").length,
           people: members.length + contacts.length, docs: docs.length,
         }} />
+        )}
       </header>
       {children}
     </>
