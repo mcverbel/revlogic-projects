@@ -6,11 +6,14 @@ import { Avatar } from "@/components/ui";
 import { fmtDate, timeAgo, todayISO } from "@/lib/format";
 import { EngagementSettings } from "@/components/engagement-settings";
 import { listEngagements } from "@/lib/queries";
+import { openIssues } from "@/lib/notes";
+import { categoryOf } from "@/lib/constants";
 
 export default async function Overview({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   if (isDesignBoard(slug)) redirect(`/e/${slug}/plan`);
-  const { e, tasks, members, contacts, activity, people, sources } = await loadEngagement(slug);
+  const { me, e, tasks, members, contacts, activity, people, sources } = await loadEngagement(slug);
+  const issues = categoryOf(e.category).section !== "creative" ? await openIssues(e.id, me.id) : [];
   const others = (await listEngagements()).filter((r) => r.e.id !== e.id).map((r) => ({ id: r.e.id, label: `${r.client.name} · ${r.e.name}` }));
   const done = tasks.filter((t) => t.status === "done").length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
@@ -38,6 +41,16 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
           <span className="text-[28px] font-semibold text-red" style={{ fontFamily: "var(--font-display)" }}>{risks.length}</span>
           {risks.slice(0, 3).map((t) => <Link key={t.id} href={`/e/${e.slug}/plan?task=${t.id}`} className="text-[13px] no-underline">{t.title}</Link>)}
         </div>
+        {categoryOf(e.category).section !== "creative" && (
+          <div className="card p-4 flex flex-col gap-2">
+            <span className="text-xs text-ink-3 font-medium">Open blockers</span>
+            <span className="text-[28px] font-semibold" style={{ fontFamily: "var(--font-display)", color: issues.length ? "#ff8a80" : undefined }}>{issues.length}</span>
+            {issues.slice(0, 3).map((n) => (
+              <Link key={n.id} href={`/e/${e.slug}/notes?note=${n.id}`} className="text-[13px] no-underline">{n.title}{n.neededBy ? <span className="text-ink-3"> · due {fmtDate(n.neededBy)}</span> : null}</Link>
+            ))}
+            <Link href={`/e/${e.slug}/notes`} className="text-xs text-ink-3 no-underline hover:text-mint mt-auto">{issues.length ? "See all notes" : "Add a blocker or meeting notes"} →</Link>
+          </div>
+        )}
         <div className="card p-4 flex flex-col gap-2.5">
           <span className="text-xs text-ink-3 font-medium">Team</span>
           <div className="flex">{members.map(({ u }) => <span key={u.id} className="-mr-2 rounded-full border-2 border-panel"><Avatar name={u.name} src={u.avatarUrl} size={32} /></span>)}</div>

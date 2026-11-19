@@ -292,3 +292,43 @@ export const brandClients = pgTable("brand_clients", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Notes tab on engagements and partners: blockers, dependencies, meeting notes and plain notes.
+// visibility "private" = only the author sees it (admins included).
+export const projectNotes = pgTable("project_notes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  engagementId: uuid("engagement_id").references(() => engagements.id, { onDelete: "cascade" }).notNull(),
+  authorId: uuid("author_id").references(() => users.id).notNull(),
+  kind: text("kind").notNull(), // blocker | dependency | meeting | note
+  title: text("title").notNull(),
+  body: text("body"),
+  visibility: text("visibility").notNull().default("team"), // team | private
+  waitingOn: text("waiting_on"), // client | internal | vendor | other
+  ownerId: uuid("owner_id").references(() => users.id),
+  neededBy: date("needed_by"),
+  status: text("status").notNull().default("open"), // open | resolved
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: uuid("resolved_by").references(() => users.id),
+  meetingDate: date("meeting_date"),
+  attendees: text("attendees"),
+  recordingUrl: text("recording_url"),
+  mentions: uuid("mentions").array().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("project_notes_eng").on(t.engagementId, t.createdAt)]);
+
+/** Plan tasks a blocker or dependency holds up. */
+export const projectNoteTasks = pgTable("project_note_tasks", {
+  noteId: uuid("note_id").references(() => projectNotes.id, { onDelete: "cascade" }).notNull(),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }).notNull(),
+}, (t) => [primaryKey({ columns: [t.noteId, t.taskId] })]);
+
+/** Replies on a note. They follow the note's visibility. */
+export const projectNoteReplies = pgTable("project_note_replies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  noteId: uuid("note_id").references(() => projectNotes.id, { onDelete: "cascade" }).notNull(),
+  authorId: uuid("author_id").references(() => users.id).notNull(),
+  body: text("body").notNull(),
+  mentions: uuid("mentions").array().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

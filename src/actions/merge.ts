@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
   engagements, phases, tasks, engagementMembers, clientContacts, documents, comments, activityLog,
   engagementSources, suggestions, processedItems,
+  projectNotes,
 } from "@/db/schema";
 import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
@@ -46,6 +47,7 @@ export async function mergeEngagement(sourceId: string, targetId: string) {
     await tx.update(comments).set({ engagementId: targetId }).where(eq(comments.engagementId, sourceId));
     await tx.update(suggestions).set({ engagementId: targetId }).where(eq(suggestions.engagementId, sourceId));
     await tx.update(activityLog).set({ engagementId: targetId }).where(eq(activityLog.engagementId, sourceId));
+    await tx.update(projectNotes).set({ engagementId: targetId }).where(eq(projectNotes.engagementId, sourceId));
 
     // Records keyed by engagement: copy without duplicates, then remove from the source
     await tx.execute(sql`insert into engagement_members (engagement_id, user_id, project_role, tags)

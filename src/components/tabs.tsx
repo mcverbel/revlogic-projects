@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export function Tabs({ slug, counts }: { slug: string; counts: { plan: number; suggested: number; people: number; docs: number } }) {
+export function Tabs({ slug, counts }: { slug: string; counts: { plan: number; suggested: number; people: number; docs: number; notes?: number } }) {
   const p = usePathname();
   const base = `/e/${slug}`;
   const tabs = [
@@ -11,6 +11,7 @@ export function Tabs({ slug, counts }: { slug: string; counts: { plan: number; s
     { href: `${base}/suggested`, label: "Suggested", count: counts.suggested, on: p.startsWith(`${base}/suggested`), badge: counts.suggested > 0 },
     { href: `${base}/people`, label: "People", count: counts.people, on: p.startsWith(`${base}/people`) },
     { href: `${base}/docs`, label: "Docs", count: counts.docs, on: p.startsWith(`${base}/docs`) },
+    ...(counts.notes !== undefined ? [{ href: `${base}/notes`, label: "Notes", count: counts.notes, on: p.startsWith(`${base}/notes`) }] : []),
   ];
   return (
     <nav aria-label="Engagement sections" className="flex flex-wrap gap-1 border-b border-line">

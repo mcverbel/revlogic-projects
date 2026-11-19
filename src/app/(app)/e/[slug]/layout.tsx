@@ -3,6 +3,7 @@ import { Icon } from "@/components/ui";
 import { JourneyBar } from "@/components/journey-bar";
 import { Tabs, DesignTabs } from "@/components/tabs";
 import { isDesignBoard, loadDesignBoard } from "@/lib/design-board";
+import { countNotes } from "@/lib/notes";
 import { fmtDate, initials } from "@/lib/format";
 import { categoryOf } from "@/lib/constants";
 import { frameworkCounts } from "@/lib/frameworks";
@@ -14,12 +15,13 @@ const HEALTH: Record<string, [string, string, string]> = {
 
 export default async function EngagementLayout({ children, params }: { children: React.ReactNode; params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { e, client, tasks, suggestions, members, contacts, docs, revs } = await loadEngagement(slug);
+  const { me, e, client, tasks, suggestions, members, contacts, docs, revs } = await loadEngagement(slug);
   const counts = await frameworkCounts();
   const design = isDesignBoard(e.slug) ? await loadDesignBoard(e.id) : null;
   const [hbg, hfg, hlabel] = HEALTH[e.health ?? "on_track"] ?? HEALTH.on_track!;
   const slackUrl = (id: string) => `https://slack.com/app_redirect?channel=${id}`;
   const cat = categoryOf(e.category);
+  const noteCount = cat.section !== "creative" ? await countNotes(e.id, me.id) : undefined;
   const isEng = cat.section === "engagement";
   return (
     <>
@@ -53,7 +55,7 @@ export default async function EngagementLayout({ children, params }: { children:
         ) : (
           <Tabs slug={e.slug} counts={{
           plan: tasks.length, suggested: suggestions.filter((s) => s.status === "pending").length,
-          people: members.length + contacts.length, docs: docs.length,
+          people: members.length + contacts.length, docs: docs.length, notes: noteCount,
         }} />
         )}
       </header>
