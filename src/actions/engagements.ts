@@ -85,6 +85,7 @@ export async function updateEngagement(engagementId: string, patch: Partial<{
   slackInternalChannelId: string | null; slackExternalChannelId: string | null; startDate: string | null; endDate: string | null; serviceLine: string | null; category: string;
 }>) {
   const me = await requireUser();
+  if (patch.category !== undefined && me.role !== "admin") throw new Error("Only admins can move a project to another section.");
   await db.update(engagements).set({ ...patch, updatedAt: new Date() }).where(eq(engagements.id, engagementId));
   for (const key of ["slackInternalChannelId", "slackExternalChannelId"] as const) {
     if (patch[key]) await db.insert(engagementSources).values({ engagementId, kind: "slack_channel", value: patch[key]! }).onConflictDoNothing();

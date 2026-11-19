@@ -1,7 +1,7 @@
 import { PersonField } from "@/components/person-picker";
 import { createEngagement } from "@/actions/engagements";
 import { allUsers } from "@/lib/queries";
-import { JOURNEY, CATEGORIES, categoryOf } from "@/lib/constants";
+import { JOURNEY, categoryOf } from "@/lib/constants";
 import { requireUser } from "@/lib/session";
 import { frameworkCounts } from "@/lib/frameworks";
 import { RevField } from "@/components/rev-picker";
@@ -18,9 +18,7 @@ export default async function NewEngagement({ searchParams }: { searchParams: Pr
     <>
       <h1 className="m-0 text-[28px] font-medium">New {cat.singular}</h1>
       <form action={createEngagement} className="card p-6 grid gap-5 max-w-3xl" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))" }}>
-        <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">Menu section
-          <select className="field" name="category" defaultValue={cat.id}>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
-        </label>
+        <input type="hidden" name="category" value={cat.id} />
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">{cat.id === "partner" ? "Partner name *" : isEng ? "Client name *" : "Client or team *"}<input className="field" name="clientName" required placeholder={cat.id === "partner" ? "Peppr.ai" : isEng ? "HiddenLayer" : "revlogic Marketing"} /></label>
         <F label="Client email domain" name="clientDomain" placeholder="hiddenlayer.com" hint="Emails with this domain feed Suggested tasks." />
         <label className="flex flex-col gap-1.5 text-[13px] text-ink-2">{isEng ? "Engagement name *" : "Project name *"}<input className="field" name="name" required placeholder={isEng ? "SKO Sales Training" : "Project name"} /></label>

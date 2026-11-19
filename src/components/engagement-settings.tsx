@@ -2,27 +2,23 @@
 import { useState, useTransition } from "react";
 import { updateEngagement, addSource, removeSource } from "@/actions/engagements";
 import type { engagements, engagementSources } from "@/db/schema";
-import { CATEGORIES } from "@/lib/constants";
 import { deleteEngagement } from "@/actions/merge";
 
 type E = typeof engagements.$inferSelect;
 type S = typeof engagementSources.$inferSelect;
 const KIND_LABEL: Record<string, string> = { email_domain: "Email domain", slack_channel: "Slack channel id", aurasell_account: "Aurasell account id" };
 
-export function EngagementSettings({ e, sources }: { e: E; sources: S[] }) {
+export function EngagementSettings({ e, sources, isAdmin = false }: { e: E; sources: S[]; isAdmin?: boolean }) {
   const [pending, start] = useTransition();
   const [kind, setKind] = useState("email_domain");
   const [value, setValue] = useState("");
   const save = (patch: Parameters<typeof updateEngagement>[1]) => start(() => updateEngagement(e.id, patch));
+  // Admins can fix a project filed in the wrong section (engagement ↔ partner).
+  const moveTo = e.category === "engagement" ? { id: "partner", label: "Partners" } : e.category === "partner" ? { id: "engagement", label: "Engagements" } : null;
   return (
     <div className="card px-5 py-4 flex flex-col gap-4">
       <h2 className="m-0 text-[15px] font-semibold">Settings</h2>
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-        <label className="flex flex-col gap-1 text-[13px] text-ink-2">Menu section
-          <select className="field" defaultValue={e.category === "creative" ? "creative_design" : e.category} onChange={(ev) => save({ category: ev.target.value })}>
-            {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
         <label className="flex flex-col gap-1 text-[13px] text-ink-2">Health
           <select className="field" defaultValue={e.health ?? "on_track"} onChange={(ev) => save({ health: ev.target.value })}>
             <option value="on_track">On track</option><option value="at_risk">At risk</option><option value="off_track">Off track</option>
@@ -60,8 +56,14 @@ export function EngagementSettings({ e, sources }: { e: E; sources: S[] }) {
         </form>
       </div>
       <div className="flex flex-col gap-2 border-t border-line-2 pt-4">
-        <span className="label-mono text-[11px]">Delete project</span>
-        <div className="flex">
+        <span className="label-mono text-[11px]">{isAdmin && moveTo ? "Move or delete" : "Delete project"}</span>
+        <div className="flex flex-wrap items-center gap-5">
+          {isAdmin && moveTo && (
+            <button className="btn btn-quiet px-0 text-ink-2 hover:text-ink" disabled={pending} title="Only admins see this"
+              onClick={() => { if (confirm(`Move "${e.name}" to ${moveTo.label}?`)) save({ category: moveTo.id }); }}>
+              Move to {moveTo.label}
+            </button>
+          )}
           <button className="btn btn-quiet text-red px-0" disabled={pending}
             onClick={() => { if (confirm(`Are you sure you want to delete "${e.name}"?\n\nThis permanently deletes the project and all its tasks, phases, docs, notes, comments and suggestions. This can't be undone.`)) start(() => deleteEngagement(e.id)); }}>
             Delete project

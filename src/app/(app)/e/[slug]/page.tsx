@@ -70,7 +70,7 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
             );
           })}
         </div>
-        <EngagementSettings e={e} sources={sources} />
+        <EngagementSettings e={e} sources={sources} isAdmin={me.role === "admin"} />
       </div>
     </section>
   );
