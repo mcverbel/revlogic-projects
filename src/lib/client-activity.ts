@@ -24,6 +24,16 @@ export type ClientActivity =
 const valid = (iso: unknown): iso is string => typeof iso === "string" && !Number.isNaN(Date.parse(iso));
 
 export async function clientActivity(engagementId: string): Promise<ClientActivity> {
+  // This card must never take the whole Overview down (e.g. before its migration has run).
+  try {
+    return await readActivity(engagementId);
+  } catch (err) {
+    console.error("client activity", err);
+    return { state: "waiting" };
+  }
+}
+
+async function readActivity(engagementId: string): Promise<ClientActivity> {
   const row = await db.query.clientActivity.findFirst({ where: eq(activityTable.engagementId, engagementId) });
   if (!row) {
     const linked = await db.select().from(engagementSources)
