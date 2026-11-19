@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { linkTitle } from "@/actions/link-title";
 
 import { TOKEN, isUrl, withScheme, shortUrl } from "@/lib/rich";
 export { shortUrl, plainText, toSlack } from "@/lib/rich";
@@ -35,10 +37,26 @@ export function RichNotes({ value, onSave, onChange, placeholder = "Add a note",
 }) {
   const [editing, setEditing] = useState(editOnly || autoFocus);
   const [draft, setDraft] = useState(value);
-  const [link, setLink] = useState<{ start: number; end: number; text: string; url: string } | null>(null);
+  const [link, setLink] = useState<{ start: number; end: number; text: string; url: string; existing: boolean } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const urlInput = useRef<HTMLInputElement>(null);
+  const textInput = useRef<HTMLInputElement>(null);
+  const linkOpen = !!link;
+  // Text in the link box that we filled in from the page or file name (so we don't overwrite what someone typed).
+  const [autoText, setAutoText] = useState<{ url: string; state: "loading" | "done" | "none" } | null>(null);
+  // A URL just pasted on its own: offer its name, like Google Docs ("Press Tab").
+  const [suggest, setSuggest] = useState<{ start: number; url: string; title: string | null; loading: boolean } | null>(null);
+  const titles = useRef(new Map<string, string | null>());
+  const nameOf = async (u: string) => {
+    const url = withScheme(u);
+    if (titles.current.has(url)) return titles.current.get(url)!;
+    const t = await linkTitle(url).catch(() => null);
+    titles.current.set(url, t);
+    return t;
+  };
   const sel = useRef<[number, number]>([0, 0]);
 
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
@@ -46,11 +64,31 @@ export function RichNotes({ value, onSave, onChange, placeholder = "Add a note",
     const el = ta.current;
     if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight + 2}px`; }
   }, [draft, editing]);
-  useEffect(() => { if (link) urlInput.current?.focus(); }, [link]);
+  // Focus once, when the link box opens (not on every keystroke).
+  const placed = linkOpen && !!pos;
+  useEffect(() => {
+    if (!placed) return;
+    (link?.text ? urlInput : textInput).current?.focus();
+  }, [placed]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The link box floats under the notes box, so it never squeezes into narrow columns.
+  useLayoutEffect(() => {
+    if (!linkOpen) return;
+    const place = () => {
+      const r = ta.current?.getBoundingClientRect();
+      if (!r) return;
+      const width = Math.min(400, window.innerWidth - 24);
+      const below = window.innerHeight - r.bottom > 150;
+      setPos({ top: below ? r.bottom + 6 : Math.max(12, r.top - 140), left: Math.max(12, Math.min(r.left, window.innerWidth - width - 12)), width });
+    };
+    place();
+    window.addEventListener("resize", place); window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [linkOpen]);
+  const inside = (n: Node | null) => !!n && (!!box.current?.contains(n) || !!pop.current?.contains(n));
 
   const change = (v: string) => { setDraft(v); onChange?.(v); };
   const finish = () => {
-    setLink(null);
+    setLink(null); setSuggest(null);
     if (draft !== value) onSave?.(draft);
     if (!editOnly) setEditing(false);
   };
@@ -62,17 +100,44 @@ export function RichNotes({ value, onSave, onChange, placeholder = "Add a note",
     const el = ta.current;
     const [s, e] = el ? [el.selectionStart, el.selectionEnd] : sel.current;
     sel.current = [s, e];
-    setLink({ start: s, end: e, text: draft.slice(s, e), url: "" });
+    // Cursor on a link that's already there: edit that link.
+    for (const m of draft.matchAll(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g)) {
+      const a = m.index!, b = a + m[0].length;
+      if (s >= a && e <= b) { setLink({ start: a, end: b, text: m[1]!, url: m[2]!, existing: true }); return; }
+    }
+    setLink({ start: s, end: e, text: draft.slice(s, e), url: "", existing: false });
   };
+  const backToText = (p?: number) => requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); if (p !== undefined) el.setSelectionRange(p, p); } });
   const applyLink = () => {
     if (!link) return;
     const url = link.url.trim();
-    if (!url) { setLink(null); return; }
+    if (!url) { textInput.current?.focus(); return; }
     const md = `[${(link.text.trim() || shortUrl(withScheme(url))).replace(/[\[\]]/g, "")}](${withScheme(url)})`;
-    const next = draft.slice(0, link.start) + md + draft.slice(link.end);
-    change(next);
+    change(draft.slice(0, link.start) + md + draft.slice(link.end));
     setLink(null);
-    requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); const p = link.start + md.length; el.setSelectionRange(p, p); } });
+    backToText(link.start + md.length);
+  };
+  const removeLink = () => {
+    if (!link) return;
+    change(draft.slice(0, link.start) + link.text + draft.slice(link.end));
+    setLink(null);
+    backToText(link.start + link.text.length);
+  };
+  const cancelLink = () => { setLink(null); backToText(); };
+  /** Swap a pasted URL for its name, linked: https://docs.google.com/… → [Q3 deck](https://docs.google.com/…) */
+  const applyName = () => {
+    if (!suggest?.title) return;
+    const { start, url, title } = suggest;
+    setSuggest(null);
+    if (draft.slice(start, start + url.length) !== url) return;
+    const md = `[${title.replace(/[\[\]]/g, "")}](${url})`;
+    change(draft.slice(0, start) + md + draft.slice(start + url.length));
+    backToText(start + md.length);
+  };
+  useEffect(() => { if (!linkOpen) setPos(null); }, [linkOpen]);
+  const linkKeys = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); applyLink(); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelLink(); }
   };
 
   if (!editing) {
@@ -89,13 +154,14 @@ export function RichNotes({ value, onSave, onChange, placeholder = "Add a note",
 
   return (
     <div ref={box} className="flex flex-col gap-1.5"
-      onBlur={(e) => { if (!box.current?.contains(e.relatedTarget as Node)) finish(); }}>
+      onBlur={(e) => { if (!inside(e.relatedTarget as Node)) finish(); }}>
       <textarea ref={ta} aria-label={ariaLabel} value={draft} placeholder={placeholder} rows={compact ? 1 : minRows}
         autoFocus={autoFocus || !editOnly}
         onChange={(e) => change(e.target.value)}
         onSelect={(e) => { sel.current = [e.currentTarget.selectionStart, e.currentTarget.selectionEnd]; }}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openLink(); }
+          if (e.key === "Tab" && !e.shiftKey && suggest?.title) { e.preventDefault(); applyName(); }
           if (e.key === "Escape" && !editOnly) { e.preventDefault(); finish(); }
         }}
         onPaste={(e) => {
@@ -107,28 +173,72 @@ export function RichNotes({ value, onSave, onChange, placeholder = "Add a note",
             const md = `[${draft.slice(s, en).replace(/[\[\]]/g, "")}](${withScheme(pasted)})`;
             change(draft.slice(0, s) + md + draft.slice(en));
             requestAnimationFrame(() => el.setSelectionRange(s + md.length, s + md.length));
+          } else if (isUrl(pasted) && !pasted.trim().includes(" ")) {
+            // A link on its own: paste it, then offer its name (Tab).
+            const url = withScheme(pasted);
+            const s = el.selectionStart;
+            e.preventDefault();
+            change(draft.slice(0, s) + url + draft.slice(el.selectionEnd));
+            requestAnimationFrame(() => el.setSelectionRange(s + url.length, s + url.length));
+            setSuggest({ start: s, url, title: null, loading: true });
+            nameOf(url).then((t) => setSuggest((g) => (g && g.url === url ? { ...g, title: t, loading: false } : g)));
           }
         }}
         className={`${compact ? "w-full bg-sunken border border-line-3 rounded-md px-2 py-1.5 text-[13px] text-ink outline-none focus:border-mint-2" : "field font-normal text-[14px] leading-relaxed"} resize-none overflow-hidden ${className}`} />
-      {link ? (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-line-3 bg-panel p-2">
-          <input className="field min-h-8 flex-1 min-w-[120px] text-[13px]" placeholder="Text to show" value={link.text}
-            onChange={(e) => setLink({ ...link, text: e.target.value })} aria-label="Link text" />
-          <input ref={urlInput} className="field min-h-8 flex-[2] min-w-[160px] text-[13px]" placeholder="Paste the link (https://…)" value={link.url}
-            onChange={(e) => setLink({ ...link, url: e.target.value })} aria-label="Link URL"
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyLink(); } if (e.key === "Escape") { e.preventDefault(); setLink(null); ta.current?.focus(); } }} />
-          <button type="button" className="btn btn-primary min-h-8 px-3" disabled={!link.url.trim()} onClick={applyLink}>Link</button>
-          <button type="button" className="btn btn-quiet min-h-8 px-2" onClick={() => { setLink(null); ta.current?.focus(); }}>Cancel</button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 text-[11.5px] text-ink-3">
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={openLink}
-            className="inline-flex items-center gap-1 min-h-7 px-2 rounded-md border border-line-3 text-ink-2 hover:text-ink hover:border-ink-3 cursor-pointer">
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>
-            Link
-          </button>
-          {!compact && <span>Select words, then ⌘K or paste a URL over them.</span>}
-        </div>
+      <div className="flex items-center gap-2 text-[11.5px] text-ink-3">
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={openLink}
+          className="inline-flex items-center gap-1 min-h-7 px-2 rounded-md border border-line-3 text-ink-2 hover:text-ink hover:border-ink-3 cursor-pointer">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" /><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" /></svg>
+          Link
+        </button>
+        {suggest ? (
+          suggest.loading ? <span>Getting the name…</span>
+          : suggest.title ? (
+            <span className="flex items-center gap-1.5 min-w-0">
+              <span className="truncate">Press <kbd className="px-1 rounded border border-line-3 text-ink-2">Tab</kbd> to show “{suggest.title}”</span>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={applyName} className="text-mint hover:underline cursor-pointer shrink-0">Use name</button>
+              <button type="button" aria-label="Keep the link as is" onMouseDown={(e) => e.preventDefault()} onClick={() => setSuggest(null)} className="text-ink-3 hover:text-ink cursor-pointer shrink-0">×</button>
+            </span>
+          ) : <span>Couldn&apos;t read that link&apos;s name. Select it and press ⌘K to name it.</span>
+        ) : !compact && <span>Select words, then ⌘K or paste a URL over them.</span>}
+      </div>
+      {link && pos && createPortal(
+        <div ref={pop} role="dialog" aria-label={link.existing ? "Edit link" : "Add link"}
+          onBlur={(e) => { if (!inside(e.relatedTarget as Node)) finish(); }}
+          onMouseDown={(e) => { if (!(e.target as HTMLElement).closest("input, button")) e.preventDefault(); }}
+          className="fixed z-[120] rounded-xl border border-line-3 bg-panel shadow-[0_18px_50px_rgba(0,0,0,0.55)] p-3 flex flex-col gap-2.5"
+          style={{ top: pos.top, left: pos.left, width: pos.width }}>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Text
+            <input ref={textInput} className="field min-h-9 text-[14px]" placeholder="Words people will see" value={link.text}
+              onChange={(e) => { setAutoText(null); setLink({ ...link, text: e.target.value }); }} onKeyDown={linkKeys} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-ink-3">Link
+            <input ref={urlInput} className="field min-h-9 text-[14px]" placeholder="Paste the URL" value={link.url} inputMode="url"
+              onChange={(e) => {
+                const url = e.target.value;
+                setLink((l) => (l ? { ...l, url } : l));
+                const canFill = !link.text.trim() || autoText?.state === "done";
+                if (isUrl(url) && canFill && !link.existing) {
+                  setAutoText({ url, state: "loading" });
+                  nameOf(url).then((t) => {
+                    setAutoText((a) => (a?.url === url ? { url, state: t ? "done" : "none" } : a));
+                    if (t) setLink((l) => (l && l.url === url ? { ...l, text: t } : l));
+                  });
+                }
+              }} onKeyDown={linkKeys} />
+            {autoText?.url === link.url && autoText.state !== "done" && (
+              <span className="text-[11.5px] text-ink-3">{autoText.state === "loading" ? "Getting the name…" : "Couldn't read the name. Type the text above."}</span>
+            )}
+          </label>
+          <div className="flex items-center gap-2">
+            {link.existing && <button type="button" className="btn btn-quiet min-h-8 px-2 text-ink-3 hover:text-red" onClick={removeLink}>Remove link</button>}
+            <span className="ml-auto flex gap-2">
+              <button type="button" className="btn btn-ghost min-h-8 px-3" onClick={cancelLink}>Cancel</button>
+              <button type="button" className="btn btn-primary min-h-8 px-3" disabled={!link.url.trim()} onClick={applyLink}>{link.existing ? "Save" : "Add link"}</button>
+            </span>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
