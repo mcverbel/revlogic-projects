@@ -52,7 +52,7 @@ export async function getEngagement(slug: string, meId: string) {
     db.select().from(phases).where(eq(phases.engagementId, e.id)).orderBy(asc(phases.sortOrder)),
     db.select().from(tasks).where(eq(tasks.engagementId, e.id)).orderBy(asc(tasks.sortOrder), asc(tasks.dueDate), asc(tasks.createdAt)),
     db.select().from(suggestions).where(eq(suggestions.engagementId, e.id)).orderBy(desc(suggestions.createdAt)),
-    db.select().from(activityLog).where(eq(activityLog.engagementId, e.id)).orderBy(desc(activityLog.createdAt)).limit(15),
+    db.select().from(activityLog).where(eq(activityLog.engagementId, e.id)).orderBy(desc(activityLog.createdAt)).limit(100),
     db.select().from(engagementSources).where(eq(engagementSources.engagementId, e.id)),
     allUsers(),
   ]);

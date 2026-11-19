@@ -41,6 +41,11 @@ export function NotesView({ engagementId, notes, people, tasks, me }: {
 }) {
   const search = useSearchParams();
   const focusId = search.get("note");
+  // "Add meeting notes" from the Overview's Client activity opens this tab with the meeting filled in.
+  const prefill: Draft | undefined = search.get("new") === "meeting" ? {
+    ...blank("meeting"), title: search.get("title") ?? "", meetingDate: search.get("date") ?? todayISO(),
+    attendees: search.get("with") ?? "", recordingUrl: search.get("link") ?? "",
+  } : undefined;
   const [filter, setFilter] = useState<Filter>("all");
   const [showResolved, setShowResolved] = useState(false);
   const [q, setQ] = useState("");
@@ -79,7 +84,7 @@ export function NotesView({ engagementId, notes, people, tasks, me }: {
   return (
     <div className="grid gap-5 items-start" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" }}>
       <section className="flex flex-col gap-4 min-w-0" style={{ gridColumn: "span 2 / span 2" }}>
-        <NoteForm engagementId={engagementId} people={people} tasks={tasks} meId={me.id} />
+        <NoteForm key={prefill ? `pre-${prefill.title}-${prefill.meetingDate}` : "new"} engagementId={engagementId} people={people} tasks={tasks} meId={me.id} initial={prefill} />
 
         <div className="flex flex-wrap items-center gap-2">
           {filters.map((f) => (
@@ -132,10 +137,10 @@ export function NotesView({ engagementId, notes, people, tasks, me }: {
 }
 
 // ---------------- New / edit form ----------------
-function NoteForm({ engagementId, people, tasks, meId, editing, onDone }: {
-  engagementId: string; people: User[]; tasks: TaskLite[]; meId: string; editing?: FullNote; onDone?: () => void;
+function NoteForm({ engagementId, people, tasks, meId, editing, onDone, initial }: {
+  engagementId: string; people: User[]; tasks: TaskLite[]; meId: string; editing?: FullNote; onDone?: () => void; initial?: Draft;
 }) {
-  const [d, setD] = useState<Draft>(editing ? fromNote(editing) : blank());
+  const [d, setD] = useState<Draft>(editing ? fromNote(editing) : initial ?? blank());
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const set = (p: Partial<Draft>) => setD((x) => ({ ...x, ...p }));
