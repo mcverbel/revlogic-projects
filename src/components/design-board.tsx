@@ -144,7 +144,7 @@ export function DesignBoard({ engagementId, mode, tasks, contractors, statuses, 
       </div>
       {mode === "done" && list.length > 0 && <span className="text-xs text-ink-3">Newest first. Uncheck a task to move it back to Tasks.</span>}
 
-      {open && <DesignTaskDrawer key={open.id} task={open} people={people} onClose={() => setOpen(null)} />}
+      {open && <DesignTaskDrawer key={open.id} task={open} people={people} contractors={contractors} statuses={statuses} onClose={() => setOpen(null)} />}
       {editing && <OptionsEditor engagementId={engagementId} field={editing} options={editing === "contractor" ? contractors : statuses} people={people} onClose={() => setEditing(null)} />}
     </section>
   );
@@ -300,7 +300,9 @@ function OptionRow({ o, isC, people, first, last, onSave, onDelete, onMove, pend
 }
 
 // ---------------- Task window: notes and comments ----------------
-function DesignTaskDrawer({ task: t, people, onClose }: { task: FullTask; people: User[]; onClose: () => void }) {
+function DesignTaskDrawer({ task: t, people, contractors, statuses, onClose }: {
+  task: FullTask; people: User[]; contractors: BoardOption[]; statuses: BoardOption[]; onClose: () => void;
+}) {
   const [pending, start] = useTransition();
   const [comment, setComment] = useState("");
   const [mentionIds, setMentionIds] = useState<string[]>([]);
@@ -309,20 +311,32 @@ function DesignTaskDrawer({ task: t, people, onClose }: { task: FullTask; people
     window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const person = (id: string | null) => people.find((p) => p.id === id);
+  const contractor = contractors.find((c) => c.userId === t.ownerId);
   return (
     <div className="fixed inset-0 z-30 flex justify-end">
       <button aria-label="Close task" className="absolute inset-0 bg-[rgba(10,12,11,0.6)] cursor-pointer" onClick={onClose} />
       <aside aria-label="Task details" className="relative w-[480px] max-w-full h-full bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.45)] overflow-y-auto box-border px-6 pt-5 pb-8 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1.5 flex-1">
-            <span className="text-xs text-ink-3">
-              {t.status === "done" ? `Completed ${fmtDate(t.completedAt)}` : t.dueDate ? `Due ${fmtDate(t.dueDate)}` : "No due date"}
-              {person(t.ownerId) ? ` · ${person(t.ownerId)!.name}` : ""}
-            </span>
+            {t.status === "done" && <span className="text-xs text-ink-3">Completed {fmtDate(t.completedAt)}</span>}
             <textarea aria-label="Title" rows={2} className="bg-transparent text-[20px] font-semibold leading-tight text-ink border-0 outline-none focus:bg-bg rounded px-1 -mx-1 resize-none" defaultValue={t.title}
               onBlur={(e) => e.target.value.trim() && e.target.value !== t.title && start(() => updateTask(t.id, { title: e.target.value.trim() }))} />
           </div>
           <button onClick={onClose} aria-label="Close" className="btn btn-ghost w-11 h-11 justify-center p-0"><Icon name="x" size={18} /></button>
+        </div>
+
+        <div className="grid grid-cols-[130px_minmax(0,1fr)] gap-x-3 gap-y-2 items-center text-[13px]">
+          <span className="text-ink-3">Due date</span>
+          <input type="date" aria-label="Due date" defaultValue={t.dueDate ?? ""} onChange={(e) => start(() => updateTask(t.id, { dueDate: e.target.value || null }))}
+            className={`field min-h-[38px] ${isOverdue(t.dueDate, t.status) ? "text-red" : ""}`} />
+          <span className="text-ink-3">Assigned contractor</span>
+          <OptionSelect label="Assigned contractor" options={contractors} value={contractor?.id ?? null} noneLabel="None"
+            fallback={!contractor && person(t.ownerId) ? { label: person(t.ownerId)!.name } : null}
+            onChange={(id) => start(() => updateTask(t.id, { ownerId: contractors.find((c) => c.id === id)?.userId ?? null }))} />
+          <span className="text-ink-3">Account owner</span>
+          <PersonPicker people={people} value={t.accountOwnerId} noneLabel="None" label="Account owner" onChange={(id) => start(() => setAccountOwner(t.id, id))} />
+          <span className="text-ink-3">Status</span>
+          <OptionSelect label="Status" options={statuses} value={t.statusOptionId ?? statuses[0]?.id ?? null} onChange={(id) => id && start(() => setTaskStatusOption(t.id, id))} />
         </div>
 
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes
