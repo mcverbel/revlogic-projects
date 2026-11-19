@@ -3,14 +3,13 @@ import { useState, useTransition } from "react";
 import { updateEngagement, addSource, removeSource } from "@/actions/engagements";
 import type { engagements, engagementSources } from "@/db/schema";
 import { CATEGORIES } from "@/lib/constants";
-import { mergeEngagement, archiveEngagement, deleteEngagement } from "@/actions/merge";
+import { deleteEngagement } from "@/actions/merge";
 
 type E = typeof engagements.$inferSelect;
 type S = typeof engagementSources.$inferSelect;
 const KIND_LABEL: Record<string, string> = { email_domain: "Email domain", slack_channel: "Slack channel id", aurasell_account: "Aurasell account id" };
 
-export function EngagementSettings({ e, sources, others = [] }: { e: E; sources: S[]; others?: { id: string; label: string }[] }) {
-  const [mergeInto, setMergeInto] = useState("");
+export function EngagementSettings({ e, sources }: { e: E; sources: S[] }) {
   const [pending, start] = useTransition();
   const [kind, setKind] = useState("email_domain");
   const [value, setValue] = useState("");
@@ -61,23 +60,10 @@ export function EngagementSettings({ e, sources, others = [] }: { e: E; sources:
         </form>
       </div>
       <div className="flex flex-col gap-2 border-t border-line-2 pt-4">
-        <span className="label-mono text-[11px]">Merge, archive or delete</span>
-        <p className="m-0 text-[13px] text-ink-3">Merging moves this project&apos;s tasks, phases, team, contacts, docs and suggestions into the one you pick, then archives this one.</p>
-        <div className="flex flex-wrap gap-2">
-          <select className="field flex-1 min-w-[220px]" value={mergeInto} onChange={(ev) => setMergeInto(ev.target.value)} aria-label="Merge into">
-            <option value="">Merge into…</option>
-            {others.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <button className="btn btn-ghost" disabled={pending || !mergeInto}
-            onClick={() => { const t = others.find((o) => o.id === mergeInto); if (t && confirm(`Move everything from "${e.name}" into "${t.label}" and archive "${e.name}"?`)) start(() => mergeEngagement(e.id, mergeInto)); }}>
-            Merge
-          </button>
-          <button className="btn btn-quiet text-ink-3" disabled={pending}
-            onClick={() => { if (confirm(`Archive "${e.name}"? It disappears from the menu; its data is kept.`)) start(() => archiveEngagement(e.id)); }}>
-            Archive
-          </button>
-          <button className="btn btn-quiet text-red" disabled={pending}
-            onClick={() => { if (confirm(`Are you sure you want to delete "${e.name}"?\n\nThis permanently deletes the project and all its tasks, phases, docs, comments and suggestions. This can't be undone.`)) start(() => deleteEngagement(e.id)); }}>
+        <span className="label-mono text-[11px]">Delete project</span>
+        <div className="flex">
+          <button className="btn btn-quiet text-red px-0" disabled={pending}
+            onClick={() => { if (confirm(`Are you sure you want to delete "${e.name}"?\n\nThis permanently deletes the project and all its tasks, phases, docs, notes, comments and suggestions. This can't be undone.`)) start(() => deleteEngagement(e.id)); }}>
             Delete project
           </button>
         </div>

@@ -5,7 +5,6 @@ import { loadEngagement } from "@/lib/load";
 import { Avatar } from "@/components/ui";
 import { fmtDate, timeAgo, todayISO } from "@/lib/format";
 import { EngagementSettings } from "@/components/engagement-settings";
-import { listEngagements } from "@/lib/queries";
 import { openIssues } from "@/lib/notes";
 import { categoryOf } from "@/lib/constants";
 
@@ -14,7 +13,6 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
   if (isDesignBoard(slug)) redirect(`/e/${slug}/plan`);
   const { me, e, tasks, members, contacts, activity, people, sources } = await loadEngagement(slug);
   const issues = categoryOf(e.category).section !== "creative" ? await openIssues(e.id, me.id) : [];
-  const others = (await listEngagements()).filter((r) => r.e.id !== e.id).map((r) => ({ id: r.e.id, label: `${r.client.name} · ${r.e.name}` }));
   const done = tasks.filter((t) => t.status === "done").length;
   const pct = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   const today = todayISO();
@@ -72,7 +70,7 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
             );
           })}
         </div>
-        <EngagementSettings e={e} sources={sources} others={others} />
+        <EngagementSettings e={e} sources={sources} />
       </div>
     </section>
   );
