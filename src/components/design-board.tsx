@@ -8,9 +8,9 @@ import type { FullTask } from "@/lib/queries";
 import type { users as usersT } from "@/db/schema";
 import type { BoardOption } from "@/lib/design-board";
 import { PersonPicker } from "./person-picker";
-import { MentionBox, CommentBody } from "./mention-box";
-import { Avatar, Icon, Empty } from "./ui";
-import { updateTask, addComment, deleteTask } from "@/actions/tasks";
+import { TaskComments, type Viewer } from "./task-comments";
+import { Icon, Empty } from "./ui";
+import { updateTask, deleteTask } from "@/actions/tasks";
 import { createDesignTask, setTaskStatusOption, setAccountOwner, setTaskDone, saveBoardOption, deleteBoardOption, moveBoardOption } from "@/actions/design";
 import { fmtDate, isOverdue } from "@/lib/format";
 
@@ -86,8 +86,8 @@ function OptionSelect({ options, value, onChange, noneLabel, label, fallback }: 
 
 const GRID = "grid grid-cols-[40px_minmax(220px,1fr)_150px_190px_200px_170px] gap-2 items-center";
 
-export function DesignBoard({ engagementId, mode, tasks, contractors, statuses, people, canEdit }: {
-  engagementId: string; mode: "open" | "done"; tasks: FullTask[]; contractors: BoardOption[]; statuses: BoardOption[]; people: User[]; canEdit: boolean;
+export function DesignBoard({ engagementId, mode, tasks, contractors, statuses, people, canEdit, me }: {
+  engagementId: string; mode: "open" | "done"; tasks: FullTask[]; contractors: BoardOption[]; statuses: BoardOption[]; people: User[]; canEdit: boolean; me: Viewer;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -145,7 +145,7 @@ export function DesignBoard({ engagementId, mode, tasks, contractors, statuses, 
       </div>
       {mode === "done" && list.length > 0 && <span className="text-xs text-ink-3">Newest first. Uncheck a task to move it back to Tasks.</span>}
 
-      {open && <DesignTaskDrawer key={open.id} task={open} people={people} contractors={contractors} statuses={statuses} onClose={() => setOpen(null)} />}
+      {open && <DesignTaskDrawer key={open.id} task={open} people={people} contractors={contractors} statuses={statuses} me={me} onClose={() => setOpen(null)} />}
       {editing && <OptionsEditor engagementId={engagementId} field={editing} options={editing === "contractor" ? contractors : statuses} people={people} onClose={() => setEditing(null)} />}
     </section>
   );
@@ -301,12 +301,10 @@ function OptionRow({ o, isC, people, first, last, onSave, onDelete, onMove, pend
 }
 
 // ---------------- Task window: notes and comments ----------------
-function DesignTaskDrawer({ task: t, people, contractors, statuses, onClose }: {
-  task: FullTask; people: User[]; contractors: BoardOption[]; statuses: BoardOption[]; onClose: () => void;
+function DesignTaskDrawer({ task: t, people, contractors, statuses, me, onClose }: {
+  task: FullTask; people: User[]; contractors: BoardOption[]; statuses: BoardOption[]; me: Viewer; onClose: () => void;
 }) {
   const [pending, start] = useTransition();
-  const [comment, setComment] = useState("");
-  const [mentionIds, setMentionIds] = useState<string[]>([]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
@@ -345,28 +343,7 @@ function DesignTaskDrawer({ task: t, people, contractors, statuses, onClose }: {
             onSave={(v) => start(() => updateTask(t.id, { notes: v || null }))} />
         </label>
 
-        <div className="flex flex-col gap-3 border-t border-line pt-4">
-          <span className="text-xs font-semibold text-ink-3">Comments</span>
-          {t.comments.length === 0 && <span className="text-[13px] text-ink-3">No comments yet.</span>}
-          {t.comments.map((c) => {
-            const a = person(c.authorId);
-            return (
-              <div key={c.id} className="flex gap-2.5">
-                <Avatar name={a?.name ?? "?"} src={a?.avatarUrl} size={28} />
-                <div className="flex flex-col gap-0.5 min-w-0"><span className="text-[13px]"><span className="font-semibold">{a?.name}</span> <span className="text-xs text-ink-3">{fmtDate(c.createdAt)}</span></span>
-                  <span className="text-[14px] leading-relaxed whitespace-pre-wrap"><CommentBody body={c.body} people={people} /></span></div>
-              </div>
-            );
-          })}
-          <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await addComment(t.id, comment, mentionIds); setComment(""); setMentionIds([]); }); }}>
-            <label htmlFor="comment" className="text-xs text-ink-3">Add a comment. Anyone you @tag gets a Slack DM.</label>
-            <MentionBox id="comment" people={people} value={comment} onChange={setComment} mentionIds={mentionIds} onMentionIds={setMentionIds} />
-            <div className="flex justify-between">
-              <button type="button" className="btn btn-quiet hover:text-red" onClick={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }}>Delete task</button>
-              <button className="btn btn-primary" disabled={!comment.trim() || pending}>Comment</button>
-            </div>
-          </form>
-        </div>
+        <TaskComments task={t} people={people} me={me} onDeleteTask={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }} />
       </aside>
     </div>
   );

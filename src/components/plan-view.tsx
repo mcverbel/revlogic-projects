@@ -7,8 +7,8 @@ import type { FullTask } from "@/lib/queries";
 import type { phases as phasesT, users as usersT } from "@/db/schema";
 import { PersonPicker, PeoplePicker } from "./person-picker";
 import { NewTaskBar } from "./new-task-bar";
-import { MentionBox, CommentBody } from "./mention-box";
-import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, addComment, deleteTask } from "@/actions/tasks";
+import { TaskComments, type Viewer } from "./task-comments";
+import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, deleteTask } from "@/actions/tasks";
 import { Avatar, StatusPill, PriorityDot, Icon, Empty, statusTone } from "./ui";
 import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES } from "@/lib/constants";
 import { fmtDate, isOverdue, todayISO } from "@/lib/format";
@@ -18,7 +18,7 @@ type User = typeof usersT.$inferSelect;
 
 const GRID = "grid grid-cols-[28px_minmax(240px,1fr)_210px_130px_140px_110px_minmax(180px,240px)_60px] gap-3";
 
-export function PlanView({ engagementId, tasks, phases, people }: { engagementId: string; tasks: FullTask[]; phases: Phase[]; people: User[] }) {
+export function PlanView({ engagementId, tasks, phases, people, me }: { engagementId: string; tasks: FullTask[]; phases: Phase[]; people: User[]; me: Viewer }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -77,7 +77,7 @@ export function PlanView({ engagementId, tasks, phases, people }: { engagementId
         <Timeline tasks={visible} phases={phases} people={people} onOpen={setOpen} />
       )}
 
-      {open && <TaskDrawer key={open.id} task={open} phases={phases} people={people} onClose={() => setOpen(null)} />}
+      {open && <TaskDrawer key={open.id} task={open} phases={phases} people={people} me={me} onClose={() => setOpen(null)} />}
     </section>
   );
 }
@@ -225,10 +225,8 @@ function Timeline({ tasks, phases, people, onOpen }: { tasks: FullTask[]; phases
 }
 
 // ---------------- Task drawer ----------------
-function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phases: Phase[]; people: User[]; onClose: () => void }) {
+function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; phases: Phase[]; people: User[]; me: Viewer; onClose: () => void }) {
   const [pending, start] = useTransition();
-  const [comment, setComment] = useState("");
-  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const save = (patch: Parameters<typeof updateTask>[1]) => start(() => updateTask(t.id, patch));
@@ -311,28 +309,7 @@ function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phas
             onSave={(v) => save({ notes: v || null })} />
         </label>
 
-        <div className="flex flex-col gap-3 border-t border-line pt-4">
-          <span className="text-xs font-semibold text-ink-3">Comments</span>
-          {t.comments.length === 0 && <span className="text-[13px] text-ink-3">No comments yet.</span>}
-          {t.comments.map((c) => {
-            const a = person(c.authorId);
-            return (
-              <div key={c.id} className="flex gap-2.5">
-                <Avatar name={a?.name ?? "?"} src={a?.avatarUrl} size={28} />
-                <div className="flex flex-col gap-0.5 min-w-0"><span className="text-[13px]"><span className="font-semibold">{a?.name}</span> <span className="text-xs text-ink-3">{fmtDate(c.createdAt)}</span></span>
-                  <span className="text-[14px] leading-relaxed whitespace-pre-wrap"><CommentBody body={c.body} people={people} /></span></div>
-              </div>
-            );
-          })}
-          <form className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await addComment(t.id, comment, mentionIds); setComment(""); setMentionIds([]); }); }}>
-            <label htmlFor="comment" className="text-xs text-ink-3">Add a comment. Anyone you @tag gets a Slack DM.</label>
-            <MentionBox id="comment" people={people} value={comment} onChange={setComment} mentionIds={mentionIds} onMentionIds={setMentionIds} />
-            <div className="flex justify-between">
-              <button type="button" className="btn btn-quiet hover:text-red" onClick={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }}>Delete task</button>
-              <button className="btn btn-primary" disabled={!comment.trim() || pending}>Comment</button>
-            </div>
-          </form>
-        </div>
+        <TaskComments task={t} people={people} me={me} onDeleteTask={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }} />
       </aside>
     </div>
   );

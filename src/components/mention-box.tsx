@@ -1,16 +1,19 @@
 "use client";
-import { RichText } from "./rich-text";
+import { RichText, useLinkTools } from "./rich-text";
 
 import { useRef, useState, type ReactNode } from "react";
 import { rank, type PickPerson } from "./person-picker";
 import { Avatar } from "./ui";
 
 /** Textarea that suggests teammates after "@". Picking one inserts "@First Last" and records their id. */
-export function MentionBox({ people, value, onChange, mentionIds, onMentionIds, id, rows = 3 }: {
+export function MentionBox({ people, value, onChange, mentionIds, onMentionIds, id, rows = 3, autoFocus = false, placeholder = "Write a comment. Type @ to tag someone.", onSubmit }: {
   people: PickPerson[]; value: string; onChange: (v: string) => void;
-  mentionIds: string[]; onMentionIds: (ids: string[]) => void; id?: string; rows?: number;
+  mentionIds: string[]; onMentionIds: (ids: string[]) => void; id?: string; rows?: number; autoFocus?: boolean; placeholder?: string;
+  onSubmit?: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const tools = useLinkTools({ draft: value, change: onChange, ta: ref, box });
   const [query, setQuery] = useState<{ start: number; q: string } | null>(null);
   const [active, setActive] = useState(0);
   const results = query ? rank(people, query.q).slice(0, 6) : [];
@@ -34,14 +37,15 @@ export function MentionBox({ people, value, onChange, mentionIds, onMentionIds, 
   };
 
   return (
-    <div className="relative">
-      <textarea ref={ref} id={id} className="field w-full" rows={rows} value={value}
-        placeholder="Write a comment. Type @ to tag someone."
+    <div ref={box} className="relative flex flex-col gap-1.5">
+      <textarea ref={ref} id={id} className="field w-full" rows={rows} value={value} autoFocus={autoFocus}
+        placeholder={placeholder} onPaste={tools.onPaste}
         onChange={(e) => { onChange(e.target.value); detect(e.target.value, e.target.selectionStart); }}
         onClick={(e) => detect(value, e.currentTarget.selectionStart)}
         onBlur={() => setTimeout(() => setQuery(null), 150)}
         onKeyDown={(e) => {
-          if (!query || !results.length) return;
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && onSubmit) { e.preventDefault(); onSubmit(); return; }
+          if (!query || !results.length) { tools.onKeyDown(e); return; }
           if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => (a + 1) % results.length); }
           else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => (a - 1 + results.length) % results.length); }
           else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pick(results[active]!); }
@@ -60,6 +64,8 @@ export function MentionBox({ people, value, onChange, mentionIds, onMentionIds, 
           ))}
         </ul>
       )}
+      {tools.toolbar("⌘K to link selected words. ⌘Enter to send.")}
+      {tools.popover}
     </div>
   );
 }

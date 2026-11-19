@@ -9,7 +9,7 @@ export default async function PlanPage({ params }: { params: Promise<{ slug: str
   const { me, e, tasks, phases, people } = await loadEngagement(slug);
   if (isDesignBoard(e.slug)) {
     const { contractors, statuses } = await loadDesignBoard(e.id);
-    return <Suspense><DesignBoard engagementId={e.id} mode="open" tasks={tasks} contractors={contractors} statuses={statuses} people={people} canEdit={await canEditOptions(me, e.id)} /></Suspense>;
+    return <Suspense><DesignBoard engagementId={e.id} mode="open" tasks={tasks} contractors={contractors} statuses={statuses} people={people} canEdit={await canEditOptions(me, e.id)} me={{ id: me.id, role: me.role }} /></Suspense>;
   }
-  return <Suspense><PlanView engagementId={e.id} tasks={tasks} phases={phases} people={people} /></Suspense>;
+  return <Suspense><PlanView engagementId={e.id} tasks={tasks} phases={phases} people={people} me={{ id: me.id, role: me.role }} /></Suspense>;
 }

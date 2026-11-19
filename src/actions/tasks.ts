@@ -110,8 +110,20 @@ export async function addComment(taskId: string, body: string, mentionIds: strin
   const me = await requireUser();
   if (!body.trim()) return;
   const { t, e } = await taskWithEngagement(taskId);
-  // @mentions: people picked from the suggestions, plus "@First Last" typed by hand.
-  // A bare "@first" only counts when exactly one teammate has that first name.
+  const mentioned = await findMentions(body, mentionIds);
+  await db.insert(comments).values({ engagementId: e.id, taskId, authorId: me.id, body: body.trim(), mentions: mentioned.map((m) => m.id) });
+  await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "commented", summary: `commented on "${t.title}"` });
+  for (const m of mentioned) {
+    await notifyTask({ to: m.id, by: me, kind: "mention", taskId, title: t.title, dueDate: t.dueDate, engagementId: e.id, comment: body.trim() });
+  }
+  revalidatePath("/", "layout");
+}
+
+/**
+ * @mentions: people picked from the suggestions, plus "@First Last" typed by hand.
+ * A bare "@first" only counts when exactly one teammate has that first name.
+ */
+async function findMentions(body: string, mentionIds: string[]) {
   const people = await db.select().from(users);
   const lower = body.toLowerCase();
   const tagged = (s: string) => new RegExp(`@${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu").test(lower);
@@ -127,11 +139,33 @@ export async function addComment(taskId: string, body: string, mentionIds: strin
     if (same.length === 1 && !people.some((x) => ids.has(x.id) && x.name.toLowerCase().startsWith(first + " "))) ids.add(p.id);
   }
   const mentioned = people.filter((p) => ids.has(p.id));
-  await db.insert(comments).values({ engagementId: e.id, taskId, authorId: me.id, body: body.trim(), mentions: mentioned.map((m) => m.id) });
-  await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: taskId, action: "commented", summary: `commented on "${t.title}"` });
-  for (const m of mentioned) {
-    await notifyTask({ to: m.id, by: me, kind: "mention", taskId, title: t.title, dueDate: t.dueDate, engagementId: e.id, comment: body.trim() });
+  return mentioned;
+}
+
+/** Edit your own comment. People newly @tagged get a Slack DM; people already tagged don't get another. */
+export async function updateComment(commentId: string, body: string, mentionIds: string[] = []) {
+  const me = await requireUser();
+  if (!body.trim()) return;
+  const c = await db.query.comments.findFirst({ where: eq(comments.id, commentId) });
+  if (!c || (c.authorId !== me.id && me.role !== "admin")) throw new Error("You can only edit your own comments.");
+  const mentioned = await findMentions(body, mentionIds);
+  await db.update(comments).set({ body: body.trim(), mentions: mentioned.map((m) => m.id) }).where(eq(comments.id, commentId));
+  if (c.taskId) {
+    const { t, e } = await taskWithEngagement(c.taskId);
+    for (const m of mentioned.filter((m) => !c.mentions.includes(m.id))) {
+      await notifyTask({ to: m.id, by: me, kind: "mention", taskId: t.id, title: t.title, dueDate: t.dueDate, engagementId: e.id, comment: body.trim() });
+    }
   }
+  revalidatePath("/", "layout");
+}
+
+/** Delete your own comment (admins can delete any). */
+export async function deleteComment(commentId: string) {
+  const me = await requireUser();
+  const c = await db.query.comments.findFirst({ where: eq(comments.id, commentId) });
+  if (!c) return;
+  if (c.authorId !== me.id && me.role !== "admin") throw new Error("You can only delete your own comments.");
+  await db.delete(comments).where(eq(comments.id, commentId));
   revalidatePath("/", "layout");
 }
 

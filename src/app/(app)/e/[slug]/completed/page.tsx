@@ -9,5 +9,5 @@ export default async function CompletedPage({ params }: { params: Promise<{ slug
   const { me, e, tasks, people } = await loadEngagement(slug);
   if (!isDesignBoard(e.slug)) notFound();
   const { contractors, statuses } = await loadDesignBoard(e.id);
-  return <Suspense><DesignBoard engagementId={e.id} mode="done" tasks={tasks} contractors={contractors} statuses={statuses} people={people} canEdit={await canEditOptions(me, e.id)} /></Suspense>;
+  return <Suspense><DesignBoard engagementId={e.id} mode="done" tasks={tasks} contractors={contractors} statuses={statuses} people={people} canEdit={await canEditOptions(me, e.id)} me={{ id: me.id, role: me.role }} /></Suspense>;
 }
