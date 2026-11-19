@@ -1,5 +1,6 @@
 "use client";
 
+import { RichNotes } from "./rich-text";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
@@ -340,8 +341,8 @@ function DesignTaskDrawer({ task: t, people, contractors, statuses, onClose }: {
         </div>
 
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes
-          <textarea className="field font-normal text-[13px]" rows={5} defaultValue={t.notes ?? ""} placeholder="Brief, links, sizes, anything the designer should know"
-            onBlur={(e) => e.target.value !== (t.notes ?? "") && start(() => updateTask(t.id, { notes: e.target.value || null }))} />
+          <RichNotes value={t.notes ?? ""} minRows={5} className="font-normal text-[13px]" placeholder="Brief, links, sizes, anything the designer should know"
+            onSave={(v) => start(() => updateTask(t.id, { notes: v || null }))} />
         </label>
 
         <div className="flex flex-col gap-3 border-t border-line pt-4">

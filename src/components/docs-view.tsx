@@ -1,5 +1,6 @@
 "use client";
 
+import { RichNotes } from "./rich-text";
 import { PersonPicker } from "./person-picker";
 import { FolderContents, TINT, type DriveItem } from "./drive-folder";
 
@@ -137,7 +138,7 @@ export function DocsView({ engagementId, docs, people }: { engagementId: string;
               <span className="text-ink-3">Updated</span><span>{fmtDate(open.updatedAt)}</span>
             </div>
             <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes
-              <textarea className="field font-normal text-[14px]" rows={4} defaultValue={open.notes ?? ""} onBlur={(e) => e.target.value !== (open.notes ?? "") && start(() => updateDocument(open.id, { notes: e.target.value || null }))} />
+              <RichNotes key={open.id} value={open.notes ?? ""} className="font-normal text-[14px]" placeholder="Add a note" onSave={(v) => start(() => updateDocument(open.id, { notes: v || null }))} />
             </label>
             <button className="btn btn-quiet self-start hover:text-red" onClick={() => { if (confirm("Remove this document from the engagement? The file itself is not deleted.")) start(async () => { await deleteDocument(open.id); setOpen(null); }); }}>Remove from engagement</button>
           </aside>

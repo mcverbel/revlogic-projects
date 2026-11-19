@@ -1,5 +1,6 @@
 "use client";
 
+import { RichNotes } from "./rich-text";
 import { useState, useTransition } from "react";
 import type { clientContacts as ccT, users as usersT, engagementMembers as emT } from "@/db/schema";
 import { addMember, addMemberByEmail, removeMember, updateMember } from "@/actions/engagements";
@@ -142,8 +143,8 @@ function ContactRow({ ct }: { ct: Contact }) {
       </span>
       {ct.email ? <a href={`mailto:${ct.email}`} className="no-underline truncate">{ct.email}</a> : <span className="text-ink-3">—</span>}
       {ct.linkedinUrl ? <a href={ct.linkedinUrl} target="_blank" rel="noreferrer" aria-label={`LinkedIn profile for ${ct.name}`} className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-line-3 font-semibold text-xs no-underline">in</a> : <span className="text-ink-3">—</span>}
-      <textarea aria-label={`Notes on ${ct.name}`} className="bg-transparent text-ink-2 leading-snug resize-y border border-transparent hover:border-line-3 rounded p-1 -m-1 min-h-10" defaultValue={ct.notes ?? ""}
-        onBlur={(e) => e.target.value !== (ct.notes ?? "") && start(() => updateContact(ct.id, { notes: e.target.value || null }))} />
+      <div className="min-w-0 text-ink-2 leading-snug"><RichNotes compact ariaLabel={`Notes on ${ct.name}`} value={ct.notes ?? ""} placeholder="Add a note"
+        onSave={(v) => start(() => updateContact(ct.id, { notes: v || null }))} /></div>
       <span className="flex flex-col items-center gap-2">
         <button aria-label={`Edit ${ct.name}`} title="Edit" className="text-ink-3 hover:text-mint cursor-pointer" onClick={() => setEditing(true)}><Icon name="pen" size={15} /></button>
         <button aria-label={`Remove ${ct.name}`} title="Remove" className="text-ink-3 hover:text-red cursor-pointer" onClick={() => confirm(`Remove ${ct.name}?`) && start(() => deleteContact(ct.id))}>×</button>

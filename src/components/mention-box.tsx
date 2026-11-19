@@ -1,4 +1,5 @@
 "use client";
+import { RichText } from "./rich-text";
 
 import { useRef, useState, type ReactNode } from "react";
 import { rank, type PickPerson } from "./person-picker";
@@ -63,19 +64,21 @@ export function MentionBox({ people, value, onChange, mentionIds, onMentionIds, 
   );
 }
 
-/** Show "@First Last" for known teammates as a highlighted chip in a comment body. */
+/** Comment text: links are clickable and "@First Last" for known teammates shows as a highlighted chip. */
 export function CommentBody({ body, people }: { body: string; people: PickPerson[] }) {
   const names = people.map((p) => p.name).filter(Boolean).sort((a, b) => b.length - a.length);
-  if (!names.length) return <>{body}</>;
-  const esc = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const re = new RegExp(`@(${esc.join("|")})`, "g");
-  const out: ReactNode[] = [];
-  let last = 0;
-  for (const m of body.matchAll(re)) {
-    out.push(body.slice(last, m.index));
-    out.push(<span key={m.index} className="rounded px-1 bg-mint-bg text-mint font-medium">@{m[1]}</span>);
-    last = m.index! + m[0].length;
-  }
-  out.push(body.slice(last));
-  return <>{out}</>;
+  const re = names.length ? new RegExp(`@(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "g") : null;
+  const decorate = (text: string, key: string) => {
+    if (!re) return text;
+    const out: ReactNode[] = [];
+    let last = 0;
+    for (const m of text.matchAll(re)) {
+      out.push(text.slice(last, m.index));
+      out.push(<span key={`${key}-${m.index}`} className="rounded px-1 bg-mint-bg text-mint font-medium">@{m[1]}</span>);
+      last = m.index! + m[0].length;
+    }
+    out.push(text.slice(last));
+    return <span key={key}>{out}</span>;
+  };
+  return <RichText text={body} decorate={decorate} />;
 }

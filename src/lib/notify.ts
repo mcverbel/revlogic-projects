@@ -1,3 +1,4 @@
+import { toSlack } from "@/lib/rich";
 // Task notifications sent as Slack DMs with a clean layout and an "Open task" button.
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -36,7 +37,7 @@ export async function notifyTask(opts: {
     { type: "section", text: { type: "mrkdwn", text: intro } },
     { type: "section", text: { type: "mrkdwn", text: `*${opts.title}*\n${details}` } },
   ];
-  if (opts.comment) blocks.push({ type: "section", text: { type: "mrkdwn", text: `> ${opts.comment.slice(0, 280).replace(/\n/g, "\n> ")}` } });
+  if (opts.comment) blocks.push({ type: "section", text: { type: "mrkdwn", text: `> ${toSlack(opts.comment).slice(0, 400).replace(/\n/g, "\n> ")}` } });
   if (opts.note) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: opts.note }] });
   blocks.push({ type: "actions", elements: [{ type: "button", text: { type: "plain_text", text: "Open task" }, url, style: "primary", action_id: "open_task" }] });
   if (footer) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: footer }] });

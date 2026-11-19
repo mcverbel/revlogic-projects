@@ -1,5 +1,6 @@
 "use client";
 
+import { RichNotes } from "./rich-text";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import type { FullTask } from "@/lib/queries";
@@ -124,9 +125,7 @@ function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: (
       <select aria-label="Priority" defaultValue={t.priority} onChange={(e) => save({ priority: e.target.value as FullTask["priority"] })} className={`${cell} mt-0.5 cursor-pointer`}>
         {PRIORITIES.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
       </select>
-      <textarea aria-label="Notes" rows={1} defaultValue={t.notes ?? ""} placeholder="Add a note" ref={autoGrow} onInput={(e) => autoGrow(e.currentTarget)}
-        onBlur={(e) => { if (e.target.value !== (t.notes ?? "")) save({ notes: e.target.value || null }); }}
-        className={`${cell} resize-none overflow-hidden leading-snug text-ink-2 placeholder:text-ink-3`} />
+      <div className="min-w-0 text-[13px] text-ink-2 leading-snug pt-1"><RichNotes compact value={t.notes ?? ""} placeholder="Add a note" onSave={(v) => save({ notes: v || null })} /></div>
       <button onClick={onOpen} title="Manage links" className={`mt-1 inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer ${t.links.length ? "text-mint" : "text-ink-3 hover:text-ink"}`}><Icon name="link" size={14} />{t.links.length || "+"}</button>
     </div>
   );
@@ -308,8 +307,8 @@ function TaskDrawer({ task: t, phases, people, onClose }: { task: FullTask; phas
         </div>
 
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes
-          <textarea className="field font-normal text-[13px]" rows={3} defaultValue={t.notes ?? ""} placeholder="Context, decisions, anything the team should know"
-            onBlur={(e) => e.target.value !== (t.notes ?? "") && save({ notes: e.target.value || null })} />
+          <RichNotes value={t.notes ?? ""} className="font-normal text-[13px]" placeholder="Context, decisions, anything the team should know"
+            onSave={(v) => save({ notes: v || null })} />
         </label>
 
         <div className="flex flex-col gap-3 border-t border-line pt-4">

@@ -5,6 +5,8 @@ import type { brandClients } from "@/db/schema";
 import { addBrandClient, updateBrandClient, deleteBrandClient } from "@/actions/design";
 import { Icon, Empty } from "./ui";
 import { fmtDate } from "@/lib/format";
+import { RichNotes } from "./rich-text";
+import { plainText } from "@/lib/rich";
 
 type Client = typeof brandClients.$inferSelect;
 
@@ -30,7 +32,7 @@ export function BrandTemplates({ engagementId, clients, canDelete }: { engagemen
       </button>
       <button type="button" onClick={() => setOpenId(c.id)} className="flex-1 min-w-0 flex items-center gap-3 text-left min-h-10 cursor-pointer group">
         <span className={`text-[15px] font-medium truncate group-hover:underline underline-offset-4 decoration-line-3 ${c.isPast ? "text-ink-2" : "text-ink"}`}>{c.name}</span>
-        <span className="text-xs text-ink-3 truncate">{c.notes?.trim() ? c.notes.trim().split("\n")[0] : "No notes yet"}</span>
+        <span className="text-xs text-ink-3 truncate">{c.notes?.trim() ? plainText(c.notes.trim().split("\n")[0]!) : "No notes yet"}</span>
       </button>
     </div>
   );
@@ -83,7 +85,6 @@ function ClientNotes({ c, engagementId, canDelete, onClose }: { c: Client; engag
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
   });
-  const links = notes.match(/https?:\/\/[^\s<>)]+/g) ?? [];
   return (
     <div className="fixed inset-0 z-40 bg-black/50 flex items-start justify-center p-4 pt-[10vh]" onClick={(e) => e.target === e.currentTarget && close()}>
       <div role="dialog" aria-modal="true" aria-label={`${c.name} notes`} className="card w-full max-w-2xl max-h-[80vh] overflow-auto p-5 flex flex-col gap-3 shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
@@ -91,14 +92,8 @@ function ClientNotes({ c, engagementId, canDelete, onClose }: { c: Client; engag
           <input className="flex-1 bg-transparent text-[20px] font-semibold text-ink outline-none rounded px-1 -mx-1 focus:bg-bg" value={name} onChange={(e) => setName(e.target.value)} aria-label="Client name" />
           <button aria-label="Close" className="btn btn-quiet px-2" onClick={close}><Icon name="x" size={16} /></button>
         </div>
-        <textarea autoFocus className="field text-[14px] leading-relaxed min-h-[260px]" value={notes} onChange={(e) => setNotes(e.target.value)}
-          placeholder={"Links to brand guidelines, logos, fonts, templates…\nhttps://drive.google.com/…"} aria-label={`Notes for ${c.name}`} />
-        {links.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-ink-3">Links</span>
-            {links.map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="text-[13px] truncate">{l}</a>)}
-          </div>
-        )}
+        <RichNotes value={notes} onChange={setNotes} autoFocus={!notes.trim()} minRows={10} className="text-[14px]" ariaLabel={`Notes for ${c.name}`}
+          placeholder={"Links to brand guidelines, logos, fonts, templates…\nSelect words and press ⌘K to link them."} />
         <div className="flex items-center justify-between gap-3 text-xs text-ink-3">
           <span>{pending || !saved ? "Saving…" : `Saved${c.updatedAt ? ` · ${fmtDate(c.updatedAt)}` : ""}`}</span>
           {canDelete && <button className="btn btn-quiet text-red" onClick={() => { if (confirm(`Delete ${c.name} and its notes?`)) { start(() => deleteBrandClient(engagementId, c.id)); onClose(); } }}>Delete client</button>}

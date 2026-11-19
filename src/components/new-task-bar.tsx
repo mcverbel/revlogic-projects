@@ -1,5 +1,6 @@
 "use client";
 
+import { RichNotes } from "./rich-text";
 import { useState, useTransition } from "react";
 import { createTask } from "@/actions/tasks";
 import { PersonPicker, PeoplePicker, type PickPerson } from "./person-picker";
@@ -83,7 +84,7 @@ export function NewTaskBar({ engagementId, phases, people }: { engagementId: str
             <input type="date" className="field" value={f.startDate} onChange={(e) => set({ startDate: e.target.value })} />
           </label>
           <label className="flex flex-col gap-1 text-[13px] text-ink-2 col-span-full">Notes
-            <textarea className="field min-h-[72px] py-2" value={f.notes} onChange={(e) => set({ notes: e.target.value })} placeholder="Context, links, anything the team should know" />
+            <RichNotes editOnly minRows={2} value={f.notes} onChange={(v) => set({ notes: v })} placeholder="Context, links, anything the team should know" />
           </label>
           <div className="flex flex-wrap gap-5 col-span-full text-[13px]">
             <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={f.isMilestone} onChange={(e) => set({ isMilestone: e.target.checked })} />Milestone</label>
