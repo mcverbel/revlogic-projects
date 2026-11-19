@@ -12,6 +12,7 @@ import { sha256 } from "@/lib/crypto";
 import { myWork } from "@/lib/queries";
 import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
+import { ensureClientActivityTable } from "@/lib/client-activity";
 
 const TOOLS = [
   {
@@ -170,6 +171,7 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
       id: String(m.id), title: str(m.title, 300) ?? "(no subject)", at: String(m.at), from: who(m.from),
       to: (Array.isArray(m.to) ? m.to : []).slice(0, 30).map(who).filter(Boolean) as StoredPerson[], snippet: str(m.snippet, 400) ?? null,
     }));
+    await ensureClientActivityTable();
     const values = { accountName: str(args.account_name, 200) ?? null, meetings, emails, syncedAt: new Date() };
     await db.insert(clientActivity).values({ engagementId: e.id, ...values }).onConflictDoUpdate({ target: clientActivity.engagementId, set: values });
     return { saved: { meetings: meetings.length, emails: emails.length } };
@@ -225,7 +227,9 @@ export async function POST(req: Request) {
         const out = await runTool(row.userId, msg.params?.name ?? "", (msg.params?.arguments ?? {}) as Record<string, any>);
         return reply({ content: [{ type: "text", text: JSON.stringify(out, null, 2) }] });
       } catch (err) {
-        return reply({ content: [{ type: "text", text: String((err as Error).message) }], isError: true });
+        // Include the database's own reason (drizzle puts it in .cause) so errors can be diagnosed.
+        const e = err as Error & { cause?: { message?: string } };
+        return reply({ content: [{ type: "text", text: [e.message?.split("\nparams:")[0], e.cause?.message].filter(Boolean).join(" | ") }], isError: true });
       }
     default:
       return NextResponse.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "Method not found" } });

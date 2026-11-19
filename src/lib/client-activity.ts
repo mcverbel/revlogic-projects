@@ -1,7 +1,7 @@
 // Client activity on the Overview tab: the client's meetings (upcoming and past) and latest emails.
 // The scheduled Aurasell sync (a Claude task with the Aurasell connector) reads them and sends them
 // through the tracker connector's save_client_activity tool; this file only reads what it saved.
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clientActivity as activityTable, clients, engagementSources, engagements, users, type StoredEmail, type StoredMeeting, type StoredPerson } from "@/db/schema";
 
@@ -23,6 +23,19 @@ export type ClientActivity =
 
 const valid = (iso: unknown): iso is string => typeof iso === "string" && !Number.isNaN(Date.parse(iso));
 
+/** Creates the client_activity table if its migration hasn't been run on this database yet. */
+let ensured = false;
+export async function ensureClientActivityTable() {
+  if (ensured) return;
+  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS "client_activity" (
+    "engagement_id" uuid PRIMARY KEY NOT NULL REFERENCES "public"."engagements"("id") ON DELETE cascade,
+    "account_name" text,
+    "meetings" jsonb DEFAULT '[]'::jsonb NOT NULL,
+    "emails" jsonb DEFAULT '[]'::jsonb NOT NULL,
+    "synced_at" timestamp with time zone DEFAULT now() NOT NULL)`));
+  ensured = true;
+}
+
 export async function clientActivity(engagementId: string): Promise<ClientActivity> {
   // This card must never take the whole Overview down (e.g. before its migration has run).
   try {
@@ -34,6 +47,7 @@ export async function clientActivity(engagementId: string): Promise<ClientActivi
 }
 
 async function readActivity(engagementId: string): Promise<ClientActivity> {
+  await ensureClientActivityTable();
   const row = await db.query.clientActivity.findFirst({ where: eq(activityTable.engagementId, engagementId) });
   if (!row) {
     const linked = await db.select().from(engagementSources)
