@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { ActivityEmail, ActivityMeeting, ClientActivity, Person } from "@/lib/client-activity";
-import { loadMeetingSummary } from "@/actions/client-activity";
 
 const DAY = 86_400_000;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -27,17 +26,13 @@ function Flag({ tone, children }: { tone: "amber" | "blue" | "red"; children: Re
 
 export function ClientActivityCard({ data, slug }: { data: ClientActivity; slug: string }) {
   if (data.state !== "ok") {
-    const msg = {
-      no_account: "This project isn't linked to an Aurasell account yet. Add the client's email domain or Aurasell account id in Settings.",
-      no_connection: "Connect Aurasell to see the client's meetings and emails here.",
-      needs_reconnect: "Your Aurasell sign-in expired. Reconnect it to see the client's meetings and emails.",
-      error: "Couldn't reach Aurasell right now. Try again in a few minutes.",
-    }[data.state];
+    const msg = data.state === "no_account"
+      ? "This project isn't linked to the client in Aurasell yet. Add the client's email domain or Aurasell account id in Settings."
+      : "The client's meetings and emails show up here after the next Aurasell sync.";
     return (
       <section className="card px-5 py-4 flex flex-wrap items-center gap-3" aria-label="Client activity">
         <span className="text-[15px] font-semibold">Client activity</span>
         <span className="text-[13px] text-ink-3 flex-1 min-w-[200px]">{msg}</span>
-        {(data.state === "no_connection" || data.state === "needs_reconnect") && <Link href="/connections" className="btn btn-ghost no-underline text-ink">{data.state === "no_connection" ? "Connect Aurasell" : "Reconnect"}</Link>}
       </section>
     );
   }
@@ -110,9 +105,7 @@ function Box({ title, children }: { title: string; children: React.ReactNode }) 
 }
 
 function PastMeeting({ m, first, notesHref }: { m: ActivityMeeting; first: boolean; notesHref: string }) {
-  const [summary, setSummary] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
   const d = new Date(m.start);
   return (
     <div className={`flex gap-2.5 items-start ${first ? "" : "border-t border-line-2 pt-2.5"}`}>
@@ -124,18 +117,15 @@ function PastMeeting({ m, first, notesHref }: { m: ActivityMeeting; first: boole
         <span className="text-[13.5px] font-medium leading-snug">{m.title} {m.heat && <span className="whitespace-nowrap text-[11px] px-1.5 rounded-full bg-[#4a2a24] text-[#ffb199] font-normal">{m.heat}</span>}</span>
         <span className="text-xs text-ink-3">{[m.minutes ? `${m.minutes} min` : null, names(m.people, 3)].filter(Boolean).join(" · ")}</span>
         <span className="flex flex-wrap gap-2.5 text-xs">
-          {m.hasSummary && (
-            <button type="button" className="text-mint hover:underline cursor-pointer" disabled={pending}
-              onClick={() => { setOpen((o) => !o); if (summary === undefined) start(async () => setSummary(await loadMeetingSummary(m.id))); }}>
+          {m.summary && (
+            <button type="button" className="text-mint hover:underline cursor-pointer" onClick={() => setOpen((o) => !o)}>
               {open ? "Hide summary" : "Summary"}
             </button>
           )}
           <Link href={notesHref} className="text-ink-3 hover:text-mint no-underline">Add notes</Link>
         </span>
-        {open && (
-          <span className="mt-1 text-[12.5px] text-ink-2 whitespace-pre-wrap rounded-md bg-sunken border border-line-2 p-2">
-            {pending || summary === undefined ? "Loading summary…" : summary ?? "No summary for this meeting."}
-          </span>
+        {open && m.summary && (
+          <span className="mt-1 text-[12.5px] text-ink-2 whitespace-pre-wrap rounded-md bg-sunken border border-line-2 p-2">{m.summary}</span>
         )}
       </span>
     </div>

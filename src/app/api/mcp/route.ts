@@ -6,11 +6,11 @@
 import { NextResponse } from "next/server";
 import { and, eq, ilike, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { apiTokens, users, engagements, clients, tasks, suggestions, engagementSources, processedItems, connections, type SuggestionSource } from "@/db/schema";
+import { apiTokens, users, engagements, clients, tasks, suggestions, engagementSources, processedItems, connections, clientActivity, type SuggestionSource, type StoredEmail, type StoredMeeting, type StoredPerson } from "@/db/schema";
 import { inArray } from "drizzle-orm";
 import { sha256 } from "@/lib/crypto";
 import { myWork } from "@/lib/queries";
-import { journeyLabel, TASK_STATUSES } from "@/lib/constants";
+import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
 
 const TOOLS = [
@@ -36,8 +36,33 @@ const TOOLS = [
   },
   {
     name: "engagements_to_sync",
-    description: "Engagements with a linked Aurasell account, plus Aurasell meeting ids already processed. Use before reading new Aurasell meetings for suggested tasks.",
+    description: "Engagements to sync from Aurasell: their linked Aurasell account ids and/or the client's email domains (find the account with search_accounts by domain when no id is linked), plus Aurasell meeting ids already processed for suggested tasks. Use first, then add_suggestions for new recorded meetings and save_client_activity for every engagement.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "save_client_activity",
+    description: "Save one engagement's client activity for its Overview tab, replacing what was saved before. Send meetings from the last 90 days and the next 60 days (not cancelled) and the latest client emails from the last 90 days (skip calendar invitations). Include Aurasell's summary and next steps only for the 3 most recent past meetings. Mark people as client: true when they are client contacts, false for revlogic people.",
+    inputSchema: {
+      type: "object", required: ["engagement_id", "meetings", "emails"],
+      properties: {
+        engagement_id: { type: "string" },
+        account_name: { type: "string", description: "The Aurasell account name" },
+        meetings: { type: "array", items: { type: "object", required: ["id", "title", "start"], properties: {
+          id: { type: "string", description: "Aurasell meeting or message id" }, title: { type: "string" },
+          start: { type: "string", description: "ISO date-time" }, end: { type: "string", description: "ISO date-time" },
+          link: { type: "string", description: "Video call link, upcoming meetings only" },
+          people: { type: "array", items: { type: "object", required: ["name", "client"], properties: { name: { type: "string" }, email: { type: "string" }, client: { type: "boolean" } } } },
+          summary: { type: "string", description: "Aurasell summary plus next steps as '- ' lines" },
+          has_recording: { type: "boolean" }, heat: { type: "string", enum: ["", "hot", "very_hot"] },
+        } } },
+        emails: { type: "array", items: { type: "object", required: ["id", "title", "at"], properties: {
+          id: { type: "string" }, title: { type: "string", description: "Subject" }, at: { type: "string", description: "ISO date-time sent" },
+          from: { type: "object", required: ["name", "client"], properties: { name: { type: "string" }, email: { type: "string" }, client: { type: "boolean" } } },
+          to: { type: "array", items: { type: "object", required: ["name", "client"], properties: { name: { type: "string" }, email: { type: "string" }, client: { type: "boolean" } } } },
+          snippet: { type: "string", description: "First line or two of the email, plain text" },
+        } } },
+      },
+    },
   },
   {
     name: "add_suggestions",
@@ -117,14 +142,37 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
     if (row) await db.update(connections).set({ lastSyncedAt: new Date(), userId }).where(eq(connections.id, row.id));
     else await db.insert(connections).values({ scope: "company", provider: "aurasell_sync", userId, lastSyncedAt: new Date() });
     const rows = await db.select({ e: engagements, c: clients }).from(engagements).innerJoin(clients, eq(clients.id, engagements.clientId)).where(isNull(engagements.archivedAt));
-    const src = await db.select().from(engagementSources).where(eq(engagementSources.kind, "aurasell_account"));
+    const src = await db.select().from(engagementSources).where(inArray(engagementSources.kind, ["aurasell_account", "email_domain"]));
     const done = await db.select().from(processedItems).where(eq(processedItems.provider, "aurasell"));
-    return rows.filter((r) => src.some((s) => s.engagementId === r.e.id)).map((r) => ({
+    return rows.map((r) => {
+      const mine = src.filter((s) => s.engagementId === r.e.id);
+      const domains = [...new Set([...mine.filter((s) => s.kind === "email_domain").map((s) => s.value), ...(r.c.domain ? [r.c.domain] : [])])];
+      const ids = [...new Set([...mine.filter((s) => s.kind === "aurasell_account").map((s) => s.value), ...(r.c.aurasellAccountId ? [r.c.aurasellAccountId] : [])])];
+      return { r, domains, ids };
+    }).filter(({ r, domains, ids }) => categoryOf(r.e.category).section !== "creative" && (domains.length || ids.length)).map(({ r, domains, ids }) => ({
       engagement_id: r.e.id, engagement: `${r.c.name} · ${r.e.name}`,
-      aurasell_account_ids: src.filter((s) => s.engagementId === r.e.id).map((s) => s.value),
+      aurasell_account_ids: ids, email_domains: domains,
       aurasell_opportunity_id: r.e.aurasellOpportunityId,
       processed_meeting_ids: done.filter((d) => d.engagementId === r.e.id).map((d) => d.externalId),
     }));
+  }
+  if (name === "save_client_activity") {
+    const e = await db.query.engagements.findFirst({ where: eq(engagements.id, String(args.engagement_id ?? "")) });
+    if (!e) throw new Error("Unknown engagement_id");
+    const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : undefined);
+    const who = (p: any): StoredPerson | null => (p && (p.name || p.email) ? { name: str(p.name, 120) ?? "", email: str(p.email, 200), client: !!p.client } : null); // eslint-disable-line @typescript-eslint/no-explicit-any
+    const meetings: StoredMeeting[] = (Array.isArray(args.meetings) ? args.meetings : []).slice(0, 100).filter((m: any) => m?.id && m?.start).map((m: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+      id: String(m.id), title: str(m.title, 300) ?? "Meeting", start: String(m.start), end: str(m.end, 40) ?? null, link: str(m.link, 500) ?? null,
+      people: (Array.isArray(m.people) ? m.people : []).slice(0, 30).map(who).filter(Boolean) as StoredPerson[],
+      summary: str(m.summary, 4000) ?? null, has_recording: !!m.has_recording, heat: str(m.heat, 20) ?? null,
+    }));
+    const emails: StoredEmail[] = (Array.isArray(args.emails) ? args.emails : []).slice(0, 100).filter((m: any) => m?.id && m?.at).map((m: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+      id: String(m.id), title: str(m.title, 300) ?? "(no subject)", at: String(m.at), from: who(m.from),
+      to: (Array.isArray(m.to) ? m.to : []).slice(0, 30).map(who).filter(Boolean) as StoredPerson[], snippet: str(m.snippet, 400) ?? null,
+    }));
+    const values = { accountName: str(args.account_name, 200) ?? null, meetings, emails, syncedAt: new Date() };
+    await db.insert(clientActivity).values({ engagementId: e.id, ...values }).onConflictDoUpdate({ target: clientActivity.engagementId, set: values });
+    return { saved: { meetings: meetings.length, emails: emails.length } };
   }
   if (name === "add_suggestions") {
     const a = args as unknown as { engagement_id: string; source: { provider: SuggestionSource["provider"]; external_id: string; title: string; url?: string }; suggestions: { title: string; kind: "task" | "waiting_on_client" | "milestone_estimate"; owner_emails?: string[]; external_owner?: string; due_date?: string; due_text?: string; quote: string; speaker?: string; at?: string }[] };

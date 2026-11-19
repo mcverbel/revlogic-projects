@@ -80,14 +80,14 @@ export default async function Overview({ params }: { params: Promise<{ slug: str
         <EngagementSettings e={e} sources={sources} isAdmin={me.role === "admin"} />
       </div>
       {hasNotes && (
-        <Suspense fallback={<section className="card px-5 py-4 flex items-center gap-3"><span className="text-[15px] font-semibold">Client activity</span><span className="text-[13px] text-ink-3">Checking Aurasell…</span></section>}>
-          <ClientActivitySection engagementId={e.id} userId={me.id} slug={e.slug} />
+        <Suspense fallback={<section className="card px-5 py-4 flex items-center gap-3"><span className="text-[15px] font-semibold">Client activity</span><span className="text-[13px] text-ink-3">Loading…</span></section>}>
+          <ClientActivitySection engagementId={e.id} slug={e.slug} />
         </Suspense>
       )}
     </section>
   );
 }
 
-async function ClientActivitySection({ engagementId, userId, slug }: { engagementId: string; userId: string; slug: string }) {
-  return <ClientActivityCard data={await clientActivity(engagementId, userId)} slug={slug} />;
+async function ClientActivitySection({ engagementId, slug }: { engagementId: string; slug: string }) {
+  return <ClientActivityCard data={await clientActivity(engagementId)} slug={slug} />;
 }

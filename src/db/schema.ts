@@ -332,3 +332,15 @@ export const projectNoteReplies = pgTable("project_note_replies", {
   mentions: uuid("mentions").array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** The client's recent meetings and emails, sent by the scheduled Aurasell sync. One row per engagement, replaced on every sync. */
+export type StoredPerson = { name: string; email?: string; client: boolean };
+export type StoredMeeting = { id: string; title: string; start: string; end?: string | null; link?: string | null; people?: StoredPerson[]; summary?: string | null; has_recording?: boolean; heat?: string | null };
+export type StoredEmail = { id: string; title: string; at: string; from?: StoredPerson | null; to?: StoredPerson[]; snippet?: string | null };
+export const clientActivity = pgTable("client_activity", {
+  engagementId: uuid("engagement_id").primaryKey().references(() => engagements.id, { onDelete: "cascade" }),
+  accountName: text("account_name"),
+  meetings: jsonb("meetings").$type<StoredMeeting[]>().default([]).notNull(),
+  emails: jsonb("emails").$type<StoredEmail[]>().default([]).notNull(),
+  syncedAt: timestamp("synced_at", { withTimezone: true }).defaultNow().notNull(),
+});
