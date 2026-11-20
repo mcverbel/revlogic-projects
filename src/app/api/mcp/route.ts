@@ -13,6 +13,9 @@ import { myWork } from "@/lib/queries";
 import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
 import { ensureClientActivityTable } from "@/lib/client-activity";
+import { importAsanaTasks, TEMP_TOKEN_HOURS, TEMP_TOKEN_LABEL } from "@/lib/asana-import";
+
+const PERSON = { type: "object", properties: { name: { type: "string" }, email: { type: "string" } } };
 
 const TOOLS = [
   {
@@ -78,6 +81,25 @@ const TOOLS = [
           owner_emails: { type: "array", items: { type: "string" } }, external_owner: { type: "string" },
           due_date: { type: "string", description: "YYYY-MM-DD" }, due_text: { type: "string" },
           quote: { type: "string" }, speaker: { type: "string" }, at: { type: "string", description: "mm:ss in the call" },
+        } } },
+      },
+    },
+  },
+  {
+    name: "import_asana_completed_tasks",
+    description: "One-time Asana migration into the Graphic Design board's Completed tab (board owner or admins only). Send completed Asana tasks, at most 50 per call. dry_run defaults to true and only reports what would happen; send dry_run: false to import. Tasks already imported are skipped, so repeating a call is safe. Never send open tasks.",
+    inputSchema: {
+      type: "object", required: ["tasks"],
+      properties: {
+        dry_run: { type: "boolean", default: true },
+        tasks: { type: "array", maxItems: 50, items: { type: "object", required: ["asana_id", "title", "completed_at"], properties: {
+          asana_id: { type: "string", description: "Asana task gid" }, title: { type: "string" },
+          completed_at: { type: "string", description: "ISO date-time" }, due_date: { type: "string", description: "YYYY-MM-DD" },
+          assignee: PERSON, requester: { ...PERSON, description: "Who asked for it: a Requester field if the task has one, otherwise the task's creator" },
+          notes: { type: "string" }, url: { type: "string", description: "Asana permalink" },
+          project: { type: "string" }, client: { type: "string", description: "Client or brand, if the task has a field for it" },
+          attachments: { type: "array", items: { type: "object", properties: { name: { type: "string" }, url: { type: "string", description: "view_url or permanent_url" } } } },
+          comments: { type: "array", items: { type: "object", properties: { author: PERSON, at: { type: "string" }, text: { type: "string" } } } },
         } } },
       },
     },
@@ -201,13 +223,15 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
     await logActivity({ engagementId: e.id, actorId: userId, entityType: "suggestion", action: "created", summary: `Claude added ${created} suggested task${created === 1 ? "" : "s"} from ${label.toLowerCase()} "${a.source.title}"` });
     return { created };
   }
+  if (name === "import_asana_completed_tasks") return importAsanaTasks(userId, args);
   throw new Error(`Unknown tool ${name}`);
 }
 
 export async function POST(req: Request) {
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const row = token ? await db.query.apiTokens.findFirst({ where: eq(apiTokens.tokenHash, sha256(token)) }) : null;
-  if (!row) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: { "WWW-Authenticate": "Bearer" } });
+  const expired = row?.label === TEMP_TOKEN_LABEL && Date.now() - row.createdAt.getTime() > TEMP_TOKEN_HOURS * 3600_000;
+  if (!row || expired) return NextResponse.json({ error: expired ? "token expired" : "unauthorized" }, { status: 401, headers: { "WWW-Authenticate": "Bearer" } });
   await db.update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.id, row.id));
   const me = await db.query.users.findFirst({ where: eq(users.id, row.userId) });
 
