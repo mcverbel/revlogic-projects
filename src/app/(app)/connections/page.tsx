@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/session";
 import { aurasellConfigured } from "@/lib/sources/aurasell";
 import { ConnectionsView } from "@/components/connections-view";
 import { appUrl } from "@/lib/app-url";
+import { connectedApps } from "@/lib/oauth";
 
 export default async function ConnectionsPage({ searchParams }: { searchParams: Promise<{ error?: string; why?: string; connected?: string }> }) {
   const sp = await searchParams;
@@ -28,6 +29,7 @@ export default async function ConnectionsPage({ searchParams }: { searchParams: 
       tokens={tokens.map((t) => ({ id: t.id, label: t.label ?? "Claude", lastUsedAt: t.lastUsedAt?.toISOString() ?? null }))}
       appUrl={appUrl()}
       refreshUrl={process.env.AURASELL_SYNC_TASK_URL ?? null}
+      aiApps={await connectedApps(me.id).catch(() => [])}
     />
     </>
   );

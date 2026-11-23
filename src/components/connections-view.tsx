@@ -3,7 +3,7 @@
 import { SlackTest } from "./slack-test";
 
 import { useState, useTransition } from "react";
-import { disconnect, saveOtterKey, createApiToken, revokeApiToken } from "@/actions/connections";
+import { disconnect, saveOtterKey, createApiToken, revokeApiToken, disconnectAiApp } from "@/actions/connections";
 import { signInAgain } from "@/actions/reconnect";
 
 type St = { connected: boolean; needsReconnect: boolean; lastSyncedAt: string | null };
@@ -23,10 +23,11 @@ function Row({ mono, tone, name, reads, connected, meta, action }: { mono: strin
   );
 }
 
-export function ConnectionsView({ isAdmin, company, mine, slackOAuthReady, tokens, appUrl, refreshUrl }: {
+export function ConnectionsView({ isAdmin, company, mine, slackOAuthReady, tokens, appUrl, refreshUrl, aiApps }: {
   isAdmin: boolean; company: { aurasell: boolean; aurasellSyncedAt: string | null; slackApp: boolean; claude: boolean };
   mine: { gmail: St; slackUser: St; otter: St; aurasell: St }; slackOAuthReady: boolean;
   tokens: { id: string; label: string; lastUsedAt: string | null }[]; appUrl: string; refreshUrl: string | null;
+  aiApps: { id: string; product: string; lastUsedAt: string }[];
 }) {
   const [pending, start] = useTransition();
   const [otterKey, setOtterKey] = useState("");
@@ -76,15 +77,33 @@ export function ConnectionsView({ isAdmin, company, mine, slackOAuthReady, token
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="label-mono m-0 font-medium">Use the tracker from your own Claude</h2>
+        <h2 className="label-mono m-0 font-medium">Use the tracker from ChatGPT or Claude</h2>
         <div className="card px-5 py-4 flex flex-col gap-3">
-          <p className="m-0 text-[13px] text-ink-2 leading-relaxed">Create a personal token, then add a custom connector in Claude with the URL <code className="text-mint">{appUrl}/api/mcp</code> and this token. Your Claude can then list your tasks, update them and add new ones. Every call acts as you.</p>
-          {newToken && <div className="p-3 rounded-lg bg-bg border border-[#2f6b4d] text-[13px]">Copy this now, it won&apos;t be shown again: <code className="text-mint break-all">{newToken}</code></div>}
-          {tokens.map((t) => (
-            <div key={t.id} className="flex items-center justify-between gap-3 text-[13px]"><span>{t.label} · {t.lastUsedAt ? `last used ${new Date(t.lastUsedAt).toLocaleDateString()}` : "never used"}</span>
-              <button className="btn btn-quiet hover:text-red" onClick={() => start(() => revokeApiToken(t.id))}>Revoke</button></div>
-          ))}
-          <button className="btn btn-ghost self-start" disabled={pending} onClick={() => start(async () => setNewToken(await createApiToken("Claude")))}>Create token</button>
+          <p className="m-0 text-[13px] text-ink-2 leading-relaxed">Ask your own ChatGPT or Claude for your tasks, or have it add and update them. It acts as you and sees only what you can see here.</p>
+          <ol className="m-0 pl-5 list-decimal text-[13px] text-ink-2 leading-relaxed flex flex-col gap-1">
+            <li><b className="text-ink">ChatGPT</b>: pick <b className="text-ink">revlogic Projects</b> in your apps (once an admin has published it) and click Connect. <b className="text-ink">Claude</b>: add it in Settings → Connectors.</li>
+            <li>Sign in with your revlogic Google account and click <b className="text-ink">Allow</b>.</li>
+          </ol>
+          <div className="flex flex-wrap items-center gap-2 text-[13px]"><span className="text-ink-3">Connector URL</span>
+            <code className="text-mint break-all">{appUrl}/api/mcp</code>
+            <button type="button" className="btn btn-quiet" onClick={() => navigator.clipboard?.writeText(`${appUrl}/api/mcp`).catch(() => {})}>Copy</button></div>
+          {aiApps.length > 0 && <div className="flex flex-col gap-2 border-t border-line-2 pt-3">
+            {aiApps.map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-3 text-[13px]"><span><b>{a.product}</b> · connected · last used {new Date(a.lastUsedAt).toLocaleDateString()}</span>
+                <button className="btn btn-quiet hover:text-red" disabled={pending} onClick={() => start(() => disconnectAiApp(a.id))}>Disconnect</button></div>
+            ))}
+          </div>}
+          <details className="border-t border-line-2 pt-3">
+            <summary className="text-[13px] text-ink-3 cursor-pointer">Personal tokens (for scheduled tasks and scripts)</summary>
+            <div className="flex flex-col gap-3 pt-3">
+              {newToken && <div className="p-3 rounded-lg bg-bg border border-[#2f6b4d] text-[13px]">Copy this now, it won&apos;t be shown again: <code className="text-mint break-all">{newToken}</code></div>}
+              {tokens.map((t) => (
+                <div key={t.id} className="flex items-center justify-between gap-3 text-[13px]"><span>{t.label} · {t.lastUsedAt ? `last used ${new Date(t.lastUsedAt).toLocaleDateString()}` : "never used"}</span>
+                  <button className="btn btn-quiet hover:text-red" onClick={() => start(() => revokeApiToken(t.id))}>Revoke</button></div>
+              ))}
+              <button className="btn btn-ghost self-start" disabled={pending} onClick={() => start(async () => setNewToken(await createApiToken("Claude")))}>Create token</button>
+            </div>
+          </details>
         </div>
       </section>
     </div>

@@ -35,3 +35,11 @@ export async function revokeApiToken(id: string) {
   await db.delete(apiTokens).where(and(eq(apiTokens.id, id), eq(apiTokens.userId, me.id)));
   revalidatePath("/connections");
 }
+
+/** Disconnect a ChatGPT or Claude sign-in. */
+export async function disconnectAiApp(id: string) {
+  const me = await requireUser();
+  const { disconnectApp } = await import("@/lib/oauth");
+  await disconnectApp(me.id, id);
+  revalidatePath("/connections");
+}

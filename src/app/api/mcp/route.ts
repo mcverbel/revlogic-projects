@@ -13,6 +13,8 @@ import { myWork } from "@/lib/queries";
 import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
 import { ensureClientActivityTable } from "@/lib/client-activity";
+import { userForAccessToken } from "@/lib/oauth";
+import { appUrl } from "@/lib/app-url";
 import { importAsanaTasks, TEMP_TOKEN_HOURS, TEMP_TOKEN_LABEL } from "@/lib/asana-import";
 
 const PERSON = { type: "object", properties: { name: { type: "string" }, email: { type: "string" } } };
@@ -227,39 +229,77 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
   throw new Error(`Unknown tool ${name}`);
 }
 
-export async function POST(req: Request) {
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  const row = token ? await db.query.apiTokens.findFirst({ where: eq(apiTokens.tokenHash, sha256(token)) }) : null;
-  const expired = row?.label === TEMP_TOKEN_LABEL && Date.now() - row.createdAt.getTime() > TEMP_TOKEN_HOURS * 3600_000;
-  if (!row || expired) return NextResponse.json({ error: expired ? "token expired" : "unauthorized" }, { status: 401, headers: { "WWW-Authenticate": "Bearer" } });
-  await db.update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.id, row.id));
-  const me = await db.query.users.findFirst({ where: eq(users.id, row.userId) });
+// Tools a person's own ChatGPT or Claude gets after signing in. The sync and import tools stay for
+// tokens made on the Connections page (scheduled tasks and the Asana migration).
+const PERSONAL_TOOLS = new Set(["my_tasks", "update_task", "create_task", "engagement_summary"]);
+const ANNOTATIONS: Record<string, { title: string; readOnlyHint: boolean; destructiveHint?: boolean; openWorldHint: boolean }> = {
+  my_tasks: { title: "My tasks", readOnlyHint: true, openWorldHint: false },
+  engagement_summary: { title: "Engagement summary", readOnlyHint: true, openWorldHint: false },
+  update_task: { title: "Update a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  create_task: { title: "Add a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+};
+const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id", "Access-Control-Allow-Methods": "POST, GET, OPTIONS" };
 
-  const msg = (await req.json()) as { id?: number | string; method: string; params?: { name?: string; arguments?: Record<string, unknown> } };
-  const reply = (result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: msg.id, result });
+function unauthorized(why = "unauthorized") {
+  return NextResponse.json({ error: why }, { status: 401, headers: { ...CORS, "WWW-Authenticate": `Bearer resource_metadata="${appUrl()}/.well-known/oauth-protected-resource"` } });
+}
+
+/** Who is calling: a connector sign-in (rlo_…) or a Connections-page token (rlp_…). */
+async function caller(req: Request) {
+  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  if (token.startsWith("rlo_")) {
+    const t = await userForAccessToken(token);
+    return t ? { userId: t.userId, personal: true } : null;
+  }
+  const row = await db.query.apiTokens.findFirst({ where: eq(apiTokens.tokenHash, sha256(token)) });
+  if (!row) return null;
+  if (row.label === TEMP_TOKEN_LABEL && Date.now() - row.createdAt.getTime() > TEMP_TOKEN_HOURS * 3600_000) return "expired" as const;
+  await db.update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.id, row.id));
+  return { userId: row.userId, personal: false };
+}
+
+export async function POST(req: Request) {
+  const who = await caller(req);
+  if (!who || who === "expired") return unauthorized(who === "expired" ? "token expired" : "unauthorized");
+  const me = await db.query.users.findFirst({ where: eq(users.id, who.userId) });
+  const tools = (who.personal ? TOOLS.filter((t) => PERSONAL_TOOLS.has(t.name)) : TOOLS).map((t) => (ANNOTATIONS[t.name] ? { ...t, annotations: ANNOTATIONS[t.name] } : t));
+
+  const msg = (await req.json().catch(() => null)) as { id?: number | string; method: string; params?: { name?: string; arguments?: Record<string, unknown>; protocolVersion?: string } } | null;
+  if (!msg || typeof msg.method !== "string") return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: CORS });
+  const reply = (result: unknown) => NextResponse.json({ jsonrpc: "2.0", id: msg.id, result }, { headers: CORS });
+  if (msg.method.startsWith("notifications/")) return new NextResponse(null, { status: 202, headers: CORS });
   switch (msg.method) {
-    case "initialize":
-      return reply({ protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "revlogic-projects", version: "0.1.0" }, instructions: `Signed in as ${me?.name}. Tools work on revlogic engagements and this person's tasks.` });
-    case "notifications/initialized":
-      return new NextResponse(null, { status: 202 });
+    case "initialize": {
+      const asked = msg.params?.protocolVersion;
+      return reply({ protocolVersion: asked && VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: "revlogic-projects", title: "revlogic Projects", version: "0.2.0" },
+        instructions: `Signed in as ${me?.name}. Use these tools for this person's revlogic tasks and engagements. Task ids come from my_tasks.` });
+    }
     case "ping":
       return reply({});
     case "tools/list":
-      return reply({ tools: TOOLS });
+      return reply({ tools });
     case "tools/call":
       try {
-        const out = await runTool(row.userId, msg.params?.name ?? "", (msg.params?.arguments ?? {}) as Record<string, any>);
-        return reply({ content: [{ type: "text", text: JSON.stringify(out, null, 2) }] });
+        const name = msg.params?.name ?? "";
+        if (!tools.some((t) => t.name === name)) throw new Error(`Unknown tool ${name}`);
+        const out = await runTool(who.userId, name, (msg.params?.arguments ?? {}) as Record<string, any>); // eslint-disable-line @typescript-eslint/no-explicit-any
+        return reply({ content: [{ type: "text", text: JSON.stringify(out, null, 2) }], structuredContent: Array.isArray(out) ? { items: out } : out });
       } catch (err) {
         // Include the database's own reason (drizzle puts it in .cause) so errors can be diagnosed.
         const e = err as Error & { cause?: { message?: string } };
         return reply({ content: [{ type: "text", text: [e.message?.split("\nparams:")[0], e.cause?.message].filter(Boolean).join(" | ") }], isError: true });
       }
     default:
-      return NextResponse.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "Method not found" } });
+      return NextResponse.json({ jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: "Method not found" } }, { headers: CORS });
   }
 }
 
+// No server-to-client stream: this server answers every request with plain JSON (allowed by Streamable HTTP).
 export async function GET() {
-  return new NextResponse("Method not allowed", { status: 405 });
+  return new NextResponse("Method not allowed", { status: 405, headers: { ...CORS, Allow: "POST" } });
+}
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS });
 }

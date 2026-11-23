@@ -344,3 +344,32 @@ export const clientActivity = pgTable("client_activity", {
   emails: jsonb("emails").$type<StoredEmail[]>().default([]).notNull(),
   syncedAt: timestamp("synced_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// Sign-in for AI connectors (ChatGPT, Claude): OAuth 2.1 with PKCE. Each person signs in with their own account.
+export const oauthClients = pgTable("oauth_clients", {
+  id: text("id").primaryKey(), // client_id
+  name: text("name"),
+  redirectUris: text("redirect_uris").array().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export const oauthCodes = pgTable("oauth_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  clientId: text("client_id").notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  scope: text("scope"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+export const oauthTokens = pgTable("oauth_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accessHash: text("access_hash").notNull().unique(),
+  refreshHash: text("refresh_hash").notNull().unique(),
+  clientId: text("client_id").notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }).notNull(),
+  refreshExpiresAt: timestamp("refresh_expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

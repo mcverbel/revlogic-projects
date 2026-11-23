@@ -1,6 +1,11 @@
 import { signIn } from "@/auth";
 
-export default function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string }> }) {
+  // Go back where the person was headed (for example a ChatGPT or Claude connection), but only within this app.
+  const { callbackUrl } = await searchParams;
+  let to = "/";
+  try { const u = new URL(callbackUrl ?? "/", "http://app.local"); if (u.origin === "http://app.local" || u.host === new URL(process.env.APP_URL ?? "http://x").host) to = u.pathname + u.search; } catch { /* default */ }
+  if (!to.startsWith("/") || to.startsWith("//")) to = "/";
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="card w-full max-w-sm p-8 flex flex-col gap-6">
@@ -10,7 +15,7 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<{ er
         </div>
         <p className="text-ink-2 leading-relaxed">Sign in with your revlogic Google account. You&apos;ll be asked to allow read-only Gmail and Drive access so the app can suggest tasks and preview documents.</p>
         <LoginError searchParams={searchParams} />
-        <form action={async () => { "use server"; await signIn("google", { redirectTo: "/" }); }}>
+        <form action={async () => { "use server"; await signIn("google", { redirectTo: to }); }}>
           <button className="btn btn-primary w-full justify-center min-h-11">Continue with Google</button>
         </form>
       </div>

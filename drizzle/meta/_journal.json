@@ -43,6 +43,13 @@
       "when": 1795126923581,
       "tag": "0005_client_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795455869127,
+      "tag": "0006_oauth",
+      "breakpoints": true
     }
   ]
 }
