@@ -22,10 +22,13 @@ const CODE_TTL_MS = 10 * 60_000;
  * and capturing their access. Add hosts with OAUTH_REDIRECT_HOSTS (comma separated) if needed.
  */
 const DEFAULT_HOSTS = ["chatgpt.com", "chat.openai.com", "openai.com", "claude.ai", "claude.com"];
+export const isLoopback = (u: URL) => ["127.0.0.1", "localhost", "[::1]", "::1"].includes(u.hostname);
 export function redirectAllowed(uri: string) {
   let u: URL;
   try { u = new URL(uri); } catch { return false; }
-  if (u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1")) return process.env.NODE_ENV !== "production" || !!process.env.OAUTH_ALLOW_LOCALHOST;
+  // Apps on the person's own computer (Codex, Claude Code, desktop clients) get the sign-in back on a
+  // local port (RFC 8252). The code only reaches that computer, and PKCE protects it.
+  if (isLoopback(u)) return u.protocol === "http:" || u.protocol === "https:";
   if (u.protocol !== "https:") return false;
   const hosts = [...DEFAULT_HOSTS, ...(process.env.OAUTH_REDIRECT_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)];
   const h = u.hostname.toLowerCase();
@@ -33,10 +36,13 @@ export function redirectAllowed(uri: string) {
 }
 
 /** Friendly name for the consent screen, from where the sign-in goes back to. */
-export function productName(uri: string) {
-  const h = (() => { try { return new URL(uri).hostname; } catch { return ""; } })();
+export function productName(uri: string, clientName?: string | null) {
+  let u: URL | null = null;
+  try { u = new URL(uri); } catch { /* unknown */ }
+  const h = u?.hostname ?? "";
   if (/(^|\.)(chatgpt\.com|openai\.com)$/.test(h)) return "ChatGPT";
   if (/(^|\.)(claude\.ai|claude\.com)$/.test(h)) return "Claude";
+  if (u && isLoopback(u)) return clientName?.trim() ? clientName.trim().slice(0, 40) : "An app on this computer";
   return h || "An app";
 }
 
@@ -220,7 +226,7 @@ export async function connectedApps(userId: string) {
   const rows = await db.select({ id: oauthTokens.id, lastUsedAt: oauthTokens.lastUsedAt, createdAt: oauthTokens.createdAt, refreshExpiresAt: oauthTokens.refreshExpiresAt, redirectUris: oauthClients.redirectUris, name: oauthClients.name })
     .from(oauthTokens).innerJoin(oauthClients, eq(oauthClients.id, oauthTokens.clientId))
     .where(and(eq(oauthTokens.userId, userId), gt(oauthTokens.refreshExpiresAt, new Date())));
-  return rows.map((r) => ({ id: r.id, product: productName(r.redirectUris[0] ?? ""), lastUsedAt: (r.lastUsedAt ?? r.createdAt).toISOString() }));
+  return rows.map((r) => ({ id: r.id, product: productName(r.redirectUris[0] ?? "", r.name), lastUsedAt: (r.lastUsedAt ?? r.createdAt).toISOString() }));
 }
 
 export async function disconnectApp(userId: string, id: string) {

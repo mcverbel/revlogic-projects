@@ -9,18 +9,18 @@ type P = Record<string, string | undefined>;
 const KEYS = ["response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope", "resource"] as const;
 
 /** Checks the request; problems with the client or redirect are shown here, never sent to an unknown address. */
-type Checked = { kind: "fatal"; message: string } | { kind: "back"; url: string } | { kind: "ok"; clientId: string; redirectUri: string };
+type Checked = { kind: "fatal"; message: string } | { kind: "back"; url: string } | { kind: "ok"; clientId: string; clientName: string | null; redirectUri: string };
 async function check(p: P): Promise<Checked> {
   const client = p.client_id ? await findClient(p.client_id) : null;
   if (!client || !p.redirect_uri || !client.redirectUris.includes(p.redirect_uri) || !redirectAllowed(p.redirect_uri)) {
     oauthLog("authorize rejected", { client: p.client_id, known: !!client, redirect: p.redirect_uri, registered: client?.redirectUris });
-    return { kind: "fatal", message: "This connection request isn't valid. Start the connection again from ChatGPT or Claude." };
+    return { kind: "fatal", message: "This connection request isn't valid. Start the connection again from ChatGPT, Codex or Claude." };
   }
   const back = (error: string) => { const u = new URL(p.redirect_uri!); u.searchParams.set("error", error); if (p.state) u.searchParams.set("state", p.state); return u.toString(); };
   if (p.response_type !== "code" || !p.code_challenge || (p.code_challenge_method ?? "plain") !== "S256") oauthLog("authorize bad request", { client: p.client_id, response_type: p.response_type, pkce: p.code_challenge_method ?? null });
   if (p.response_type !== "code") return { kind: "back", url: back("unsupported_response_type") };
   if (!p.code_challenge || (p.code_challenge_method ?? "plain") !== "S256") return { kind: "back", url: back("invalid_request") };
-  return { kind: "ok", clientId: client.id, redirectUri: p.redirect_uri };
+  return { kind: "ok", clientId: client.id, clientName: client.name, redirectUri: p.redirect_uri };
 }
 
 export default async function Authorize({ searchParams }: { searchParams: Promise<P> }) {
@@ -34,7 +34,7 @@ export default async function Authorize({ searchParams }: { searchParams: Promis
   const me = await db.query.users.findFirst({ where: eq(users.id, uid) });
   const c = await check(p);
   if (c.kind === "back") redirect(c.url);
-  const product = c.kind === "ok" ? productName(c.redirectUri) : "";
+  const product = c.kind === "ok" ? productName(c.redirectUri, c.clientName) : "";
 
   async function decide(form: FormData) {
     "use server";
