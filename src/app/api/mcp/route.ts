@@ -14,6 +14,7 @@ import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
 import { ensureClientActivityTable } from "@/lib/client-activity";
 import { oauthLog, userForAccessToken } from "@/lib/oauth";
+import { DESIGN_BOARD_SLUG } from "@/lib/design-board";
 import { appUrl } from "@/lib/app-url";
 import { importAsanaTasks, TEMP_TOKEN_HOURS, TEMP_TOKEN_LABEL } from "@/lib/asana-import";
 
@@ -242,7 +243,15 @@ const ANNOTATIONS: Record<string, { title: string; readOnlyHint: boolean; destru
   engagement_summary: { title: "Engagement summary", readOnlyHint: true, openWorldHint: false },
   update_task: { title: "Update a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   create_task: { title: "Add a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+  import_asana_completed_tasks: { title: "Import completed Asana tasks", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 };
+
+/** The Graphic Design board owner (Melissa) and admins also get the one-time Asana import. */
+async function canImportAsana(userId: string, role: string | undefined) {
+  if (role === "admin") return true;
+  const board = await db.query.engagements.findFirst({ where: eq(engagements.slug, DESIGN_BOARD_SLUG) });
+  return board?.leadUserId === userId;
+}
 const VERSIONS = ["2025-06-18", "2025-11-25", "2025-03-26", "2024-11-05"];
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id", "Access-Control-Allow-Methods": "POST, GET, OPTIONS" };
 
@@ -273,7 +282,8 @@ export async function POST(req: Request) {
     return unauthorized(who === "expired" ? "token expired" : "unauthorized");
   }
   const me = await db.query.users.findFirst({ where: eq(users.id, who.userId) });
-  const tools = (who.personal ? TOOLS.filter((t) => PERSONAL_TOOLS.has(t.name)) : TOOLS).map((t) => (ANNOTATIONS[t.name] ? { ...t, annotations: ANNOTATIONS[t.name] } : t));
+  const importer = who.personal && (await canImportAsana(who.userId, me?.role));
+  const tools = (who.personal ? TOOLS.filter((t) => PERSONAL_TOOLS.has(t.name) || (importer && t.name === "import_asana_completed_tasks")) : TOOLS).map((t) => (ANNOTATIONS[t.name] ? { ...t, annotations: ANNOTATIONS[t.name] } : t));
 
   const msg = (await req.json().catch(() => null)) as { id?: number | string; method: string; params?: { name?: string; arguments?: Record<string, unknown>; protocolVersion?: string } } | null;
   if (!msg || typeof msg.method !== "string") return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: CORS });

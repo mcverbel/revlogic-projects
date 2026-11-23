@@ -4,7 +4,17 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { createMigrationToken } from "@/actions/asana-migration";
 
-/** The prompt Melissa pastes into her own Claude. Her Claude reads Asana with her Asana connector and writes here with the tracker connector. */
+/** The prompt for ChatGPT or Claude once revlogic Projects is connected (signed in with Google). No key needed. */
+export const CONNECTOR_PROMPT = `Migrate my completed Asana tasks into revlogic Projects (the Graphic Design board) using the revlogic Projects app's import_asana_completed_tasks action. Read Asana with my Asana app. Only read from Asana: don't change anything there.
+
+1. Ask me which Asana projects to migrate.
+2. Get only the completed tasks. For each: asana_id, title, completed_at, due_date, assignee (name, email), requester (a Requester field if there is one, otherwise the creator), notes, url, project, client (if there's a field for it), attachments (name, url) and comments (author, date, text).
+3. Do a dry run first (dry_run: true, up to 50 tasks per call). Show me the totals and anyone not found in the app, and ask me to confirm.
+4. After I confirm, import them (dry_run: false) and tell me how many came over per project.
+
+Never invent anything: leave out fields Asana doesn't have. If something fails, stop and show me the error.`;
+
+/** Backup: the prompt Melissa pastes into her own Claude. Her Claude reads Asana with her Asana connector and writes here with the tracker connector. */
 export const ASANA_MIGRATION_PROMPT = `Migrate my completed Asana design tasks into revlogic Projects (the Graphic Design board). Read Asana with my Asana connector. Only read from Asana: don't change, complete, move or comment on anything there.
 
 The app is reached with plain HTTP (use Bash + curl). Write the JSON body to a file and send it with -d @file:
@@ -54,22 +64,30 @@ export function AsanaMigration({ engagementId, imported }: { engagementId: strin
               <button type="button" aria-label="Close" className="text-ink-3 hover:text-ink text-xl leading-none cursor-pointer" onClick={() => setOpen(false)}>×</button>
             </div>
             <p className="m-0 text-[13.5px] text-ink-2 leading-relaxed">
-              Your own Claude moves your completed Asana tasks into the Completed tab. You choose the projects, and nothing changes in Asana. Running it again skips tasks that already came over.
+              Your ChatGPT (or Claude) moves your completed Asana tasks into the Completed tab. You pick the projects, it shows a dry run first, and nothing changes in Asana. Running it again skips tasks that already came over.
             </p>
             <ol className="m-0 pl-5 list-decimal flex flex-col gap-2.5 text-[13.5px] leading-relaxed">
-              <li>Click <b>Copy prompt</b>.</li>
-              <li>Paste it into a new <b>Cowork</b> task (Asana needs to be connected in Claude) and follow along. It asks which projects to move and shows a dry run before importing.</li>
+              <li>In ChatGPT, make sure <b>Asana</b> and <b>revlogic Projects</b> are both connected. The first time, revlogic Projects asks you to sign in with Google and click Allow.</li>
+              <li>Copy the prompt below and send it in a new chat.</li>
             </ol>
-            <p className="m-0 text-xs text-ink-3">The prompt includes a key that lets your Claude add tasks to this app as you. It stops working after 24 hours. Don&apos;t share the prompt.</p>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="label-mono text-[11px]">Prompt</span>
-                <button type="button" className="btn btn-primary" onClick={copy} disabled={busy}>{busy ? "Preparing…" : copied ? "Copied" : "Copy prompt"}</button>
+                <button type="button" className="btn btn-primary" onClick={() => { navigator.clipboard?.writeText(CONNECTOR_PROMPT).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {}); }}>{copied ? "Copied" : "Copy prompt"}</button>
               </div>
-              {error && <span role="alert" className="text-[13px] text-red">{error}</span>}
-              <textarea readOnly value={prompt} aria-label="Migration prompt" rows={12}
+              <textarea readOnly value={CONNECTOR_PROMPT} aria-label="Migration prompt" rows={10}
                 className="w-full rounded-lg border border-line-2 bg-sunken p-3 text-[12.5px] text-ink-2 leading-relaxed resize-y" onFocus={(e) => e.currentTarget.select()} />
             </div>
+            <details className="border-t border-line-2 pt-3">
+              <summary className="text-[13px] text-ink-3 cursor-pointer">Using Claude Cowork without the connector?</summary>
+              <div className="flex flex-col gap-2 pt-3">
+                <p className="m-0 text-xs text-ink-3">This version includes a key that lets Claude add tasks to this app as you. It stops working after 24 hours. Don&apos;t share it.</p>
+                <div className="flex justify-end"><button type="button" className="btn btn-ghost text-ink" onClick={copy} disabled={busy}>{busy ? "Preparing…" : "Copy Cowork prompt"}</button></div>
+                {error && <span role="alert" className="text-[13px] text-red">{error}</span>}
+                {prompt !== ASANA_MIGRATION_PROMPT && <textarea readOnly value={prompt} aria-label="Cowork migration prompt" rows={6}
+                  className="w-full rounded-lg border border-line-2 bg-sunken p-3 text-[12.5px] text-ink-2 leading-relaxed resize-y" onFocus={(e) => e.currentTarget.select()} />}
+              </div>
+            </details>
           </div>
         </div>, document.body)}
     </div>
