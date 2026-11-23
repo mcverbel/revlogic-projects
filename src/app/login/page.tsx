@@ -1,10 +1,14 @@
 import { signIn } from "@/auth";
+import { appUrl } from "@/lib/app-url";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string }> }) {
   // Go back where the person was headed (for example a ChatGPT or Claude connection), but only within this app.
   const { callbackUrl } = await searchParams;
   let to = "/";
-  try { const u = new URL(callbackUrl ?? "/", "http://app.local"); if (u.origin === "http://app.local" || u.host === new URL(process.env.APP_URL ?? "http://x").host) to = u.pathname + u.search; } catch { /* default */ }
+  try {
+    const u = new URL(callbackUrl ?? "/", appUrl());
+    if (u.host === new URL(appUrl()).host) to = u.pathname + u.search;
+  } catch { /* default */ }
   if (!to.startsWith("/") || to.startsWith("//")) to = "/";
   return (
     <main className="min-h-screen flex items-center justify-center p-6">

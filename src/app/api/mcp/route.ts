@@ -13,7 +13,7 @@ import { myWork } from "@/lib/queries";
 import { categoryOf, journeyLabel, TASK_STATUSES } from "@/lib/constants";
 import { logActivity } from "@/lib/activity";
 import { ensureClientActivityTable } from "@/lib/client-activity";
-import { userForAccessToken } from "@/lib/oauth";
+import { oauthLog, userForAccessToken } from "@/lib/oauth";
 import { appUrl } from "@/lib/app-url";
 import { importAsanaTasks, TEMP_TOKEN_HOURS, TEMP_TOKEN_LABEL } from "@/lib/asana-import";
 
@@ -127,8 +127,13 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
     return rows.map((r) => ({ task_id: r.t.id, title: r.t.title, engagement: `${r.client.name} · ${r.e.name}`, status: r.t.status, due_date: r.t.dueDate, my_priority: r.myPriority ?? "" }));
   }
   if (name === "update_task") {
-    const t = await db.query.tasks.findFirst({ where: eq(tasks.id, args.task_id!) });
+    const t = typeof args.task_id === "string" && /^[0-9a-f-]{36}$/i.test(args.task_id) ? await db.query.tasks.findFirst({ where: eq(tasks.id, args.task_id) }) : null;
     if (!t) throw new Error("Task not found");
+    // Only the person's own tasks (owner, assignee, account owner or creator); admins can update any task.
+    const actor = await db.query.users.findFirst({ where: eq(users.id, userId) });
+    const { taskAssignees } = await import("@/db/schema");
+    const assigned = await db.select().from(taskAssignees).where(and(eq(taskAssignees.taskId, t.id), eq(taskAssignees.userId, userId)));
+    if (actor?.role !== "admin" && ![t.ownerId, t.accountOwnerId, t.createdBy].includes(userId) && !assigned.length) throw new Error("You can only update your own tasks.");
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (args.status) { set.status = args.status; set.completedAt = args.status === "done" ? new Date() : null; }
     if (args.due_date) set.dueDate = args.due_date;
@@ -238,7 +243,7 @@ const ANNOTATIONS: Record<string, { title: string; readOnlyHint: boolean; destru
   update_task: { title: "Update a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   create_task: { title: "Add a task", readOnlyHint: false, destructiveHint: false, openWorldHint: false },
 };
-const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
+const VERSIONS = ["2025-06-18", "2025-11-25", "2025-03-26", "2024-11-05"];
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id", "Access-Control-Allow-Methods": "POST, GET, OPTIONS" };
 
 function unauthorized(why = "unauthorized") {
@@ -262,7 +267,11 @@ async function caller(req: Request) {
 
 export async function POST(req: Request) {
   const who = await caller(req);
-  if (!who || who === "expired") return unauthorized(who === "expired" ? "token expired" : "unauthorized");
+  if (!who || who === "expired") {
+    const auth = req.headers.get("authorization") ?? "";
+    oauthLog("mcp 401", { why: who === "expired" ? "expired migration token" : !auth ? "no token" : auth.includes("rlo_") ? "connector token invalid or expired" : "unknown token", ua: req.headers.get("user-agent")?.slice(0, 80) });
+    return unauthorized(who === "expired" ? "token expired" : "unauthorized");
+  }
   const me = await db.query.users.findFirst({ where: eq(users.id, who.userId) });
   const tools = (who.personal ? TOOLS.filter((t) => PERSONAL_TOOLS.has(t.name)) : TOOLS).map((t) => (ANNOTATIONS[t.name] ? { ...t, annotations: ANNOTATIONS[t.name] } : t));
 
@@ -272,6 +281,7 @@ export async function POST(req: Request) {
   if (msg.method.startsWith("notifications/")) return new NextResponse(null, { status: 202, headers: CORS });
   switch (msg.method) {
     case "initialize": {
+      oauthLog("mcp initialize", { user: who.userId, connector: who.personal, version: msg.params?.protocolVersion, ua: req.headers.get("user-agent")?.slice(0, 80) });
       const asked = msg.params?.protocolVersion;
       return reply({ protocolVersion: asked && VERSIONS.includes(asked) ? asked : VERSIONS[0], capabilities: { tools: {} }, serverInfo: { name: "revlogic-projects", title: "revlogic Projects", version: "0.2.0" },
         instructions: `Signed in as ${me?.name}. Use these tools for this person's revlogic tasks and engagements. Task ids come from my_tasks.` });

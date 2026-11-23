@@ -50,6 +50,13 @@
       "when": 1795455869127,
       "tag": "0006_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795457337933,
+      "tag": "0007_oauth_client_secret",
+      "breakpoints": true
     }
   ]
 }

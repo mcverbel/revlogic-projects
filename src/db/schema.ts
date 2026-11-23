@@ -350,6 +350,8 @@ export const oauthClients = pgTable("oauth_clients", {
   id: text("id").primaryKey(), // client_id
   name: text("name"),
   redirectUris: text("redirect_uris").array().notNull(),
+  authMethod: text("auth_method").notNull().default("none"), // none | client_secret_post | client_secret_basic
+  secretHash: text("secret_hash"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 export const oauthCodes = pgTable("oauth_codes", {
