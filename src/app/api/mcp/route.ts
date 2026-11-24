@@ -125,7 +125,7 @@ async function runTool(userId: string, name: string, args: Record<string, any>) 
     if (f === "overdue") rows = rows.filter((r) => r.t.dueDate && r.t.dueDate < today);
     if (f === "this_week") rows = rows.filter((r) => r.t.dueDate && r.t.dueDate <= week);
     if (args.engagement) rows = rows.filter((r) => `${r.client.name} ${r.e.name}`.toLowerCase().includes(args.engagement!.toLowerCase()));
-    return rows.map((r) => ({ task_id: r.t.id, title: r.t.title, engagement: `${r.client.name} · ${r.e.name}`, status: r.t.status, due_date: r.t.dueDate, my_priority: r.myPriority ?? "" }));
+    return rows.map((r) => ({ task_id: r.t.id, title: r.t.title, ...(r.parentTitle ? { subtask_of: r.parentTitle } : {}), engagement: `${r.client.name} · ${r.e.name}`, status: r.t.status, due_date: r.t.dueDate, my_priority: r.myPriority ?? "" }));
   }
   if (name === "update_task") {
     const t = typeof args.task_id === "string" && /^[0-9a-f-]{36}$/i.test(args.task_id) ? await db.query.tasks.findFirst({ where: eq(tasks.id, args.task_id) }) : null;

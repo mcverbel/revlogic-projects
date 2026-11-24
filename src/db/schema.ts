@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   pgTable, pgEnum, uuid, text, timestamp, date, boolean, integer, jsonb, primaryKey, index, bigserial,
 } from "drizzle-orm/pg-core";
 
@@ -115,6 +116,11 @@ export const tasks = pgTable("tasks", {
   startDate: date("start_date"),
   dueDate: date("due_date"),
   isMilestone: boolean("is_milestone").notNull().default(false),
+  // Content pieces (discovery guide, deck…) get their own mark and a format.
+  isContent: boolean("is_content").notNull().default(false),
+  contentFormat: text("content_format"),
+  // Subtasks: one level, under a task of the same engagement. Deleting the parent deletes them.
+  parentTaskId: uuid("parent_task_id").references((): AnyPgColumn => tasks.id, { onDelete: "cascade" }),
   accountOwnerId: uuid("account_owner_id").references(() => users.id),
   statusOptionId: uuid("status_option_id"),
   waitingOnClient: boolean("waiting_on_client").notNull().default(false),

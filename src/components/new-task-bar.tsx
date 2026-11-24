@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { createTask } from "@/actions/tasks";
 import { PersonPicker, PeoplePicker, type PickPerson } from "./person-picker";
 import { Icon } from "./ui";
-import { TASK_STATUSES, PRIORITIES } from "@/lib/constants";
+import { TASK_STATUSES, PRIORITIES, CONTENT_FORMATS } from "@/lib/constants";
 
 type Phase = { id: string; name: string };
 type Status = (typeof TASK_STATUSES)[number]["id"];
@@ -14,7 +14,7 @@ type Priority = (typeof PRIORITIES)[number]["id"];
 const EMPTY = {
   title: "", ownerId: null as string | null, dueDate: "", startDate: "",
   assigneeIds: [] as string[], phaseId: "", status: "not_started" as Status, priority: "medium" as Priority,
-  notes: "", isMilestone: false, waitingOnClient: false,
+  notes: "", isMilestone: false, isContent: false, contentFormat: "", waitingOnClient: false,
 };
 
 /** Add-task bar: name, owner and due date inline; "More details" opens the rest. */
@@ -34,6 +34,7 @@ export function NewTaskBar({ engagementId, phases, people }: { engagementId: str
           title: f.title, ownerId: f.ownerId, dueDate: f.dueDate || null, startDate: f.startDate || null,
           phaseId: f.phaseId || null, assigneeIds: f.assigneeIds, status: f.status, priority: f.priority,
           notes: f.notes || null, isMilestone: f.isMilestone, waitingOnClient: f.waitingOnClient,
+          isContent: f.isContent, contentFormat: f.contentFormat || null,
         });
         // Keep the phase, owner and due date so several tasks for the same person/phase are quick to add
         setF((x) => ({ ...EMPTY, phaseId: x.phaseId, ownerId: x.ownerId, dueDate: x.dueDate }));
@@ -87,7 +88,11 @@ export function NewTaskBar({ engagementId, phases, people }: { engagementId: str
             <RichNotes editOnly minRows={2} value={f.notes} onChange={(v) => set({ notes: v })} placeholder="Context, links, anything the team should know" />
           </label>
           <div className="flex flex-wrap gap-5 col-span-full text-[13px]">
-            <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={f.isMilestone} onChange={(e) => set({ isMilestone: e.target.checked })} />Milestone</label>
+            <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={f.isMilestone} onChange={(e) => set({ isMilestone: e.target.checked, isContent: e.target.checked ? false : f.isContent })} />Milestone</label>
+            <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={f.isContent} onChange={(e) => set({ isContent: e.target.checked, isMilestone: e.target.checked ? false : f.isMilestone })} />Content</label>
+            {f.isContent && <select className="field min-h-8 py-0" aria-label="Content format" value={f.contentFormat} onChange={(e) => set({ contentFormat: e.target.value })}>
+              <option value="">Format…</option>{CONTENT_FORMATS.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+            </select>}
             <label className="inline-flex items-center gap-2 cursor-pointer"><input type="checkbox" className="w-4 h-4" checked={f.waitingOnClient} onChange={(e) => set({ waitingOnClient: e.target.checked })} />Waiting on client</label>
           </div>
         </div>

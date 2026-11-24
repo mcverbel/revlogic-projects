@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/session";
 import { logActivity } from "@/lib/activity";
 import { postToChannel } from "@/lib/slack";
 import { notifyTask } from "@/lib/notify";
-import { TASK_STATUSES } from "@/lib/constants";
+import { CONTENT_FORMATS, TASK_STATUSES } from "@/lib/constants";
 import { appUrl } from "@/lib/app-url";
 import { fmtDate } from "@/lib/format";
 import { findMentions } from "@/lib/mentions";
@@ -16,7 +16,10 @@ import { findMentions } from "@/lib/mentions";
 type TaskPatch = Partial<{
   title: string; description: string | null; notes: string | null; ownerId: string | null; status: typeof tasks.$inferInsert.status;
   priority: typeof tasks.$inferInsert.priority; startDate: string | null; dueDate: string | null; isMilestone: boolean; phaseId: string | null; waitingOnClient: boolean;
+  isContent: boolean; contentFormat: string | null;
 }>;
+
+const validFormat = (f: string | null | undefined) => (f && CONTENT_FORMATS.some((x) => x.id === f) ? f : null);
 
 async function taskWithEngagement(taskId: string) {
   const t = await db.query.tasks.findFirst({ where: eq(tasks.id, taskId) });
@@ -30,19 +33,25 @@ const link = (slug: string, taskId: string) => `<${appUrl()}/e/${slug}/plan?task
 export async function createTask(engagementId: string, input: {
   title: string; phaseId?: string | null; ownerId?: string | null; dueDate?: string | null; startDate?: string | null; isMilestone?: boolean;
   assigneeIds?: string[]; status?: (typeof tasks.$inferInsert)["status"]; priority?: (typeof tasks.$inferInsert)["priority"];
-  notes?: string | null; waitingOnClient?: boolean;
+  notes?: string | null; waitingOnClient?: boolean; parentTaskId?: string | null; isContent?: boolean; contentFormat?: string | null;
 }) {
   const me = await requireUser();
   if (!input.title.trim()) return;
+  // Subtasks: one level, inside the same engagement and phase as their parent. A content parent makes content subtasks.
+  const parent = input.parentTaskId ? await db.query.tasks.findFirst({ where: eq(tasks.id, input.parentTaskId) }) : null;
+  if (input.parentTaskId && (!parent || parent.engagementId !== engagementId)) throw new Error("Parent task not found");
+  if (parent?.parentTaskId) throw new Error("Subtasks can't have their own subtasks.");
+  const isContent = !!(input.isContent ?? parent?.isContent) && !input.isMilestone;
   const [t] = await db.insert(tasks).values({
-    engagementId, title: input.title.trim(), phaseId: input.phaseId || null, ownerId: input.ownerId || null,
+    engagementId, title: input.title.trim(), phaseId: parent ? parent.phaseId : input.phaseId || null,
+    parentTaskId: parent?.id ?? null, isContent, contentFormat: isContent ? validFormat(input.contentFormat) : null, ownerId: input.ownerId || null,
     dueDate: input.dueDate || null, startDate: input.startDate || input.dueDate || null, isMilestone: !!input.isMilestone,
     status: input.status ?? "not_started", priority: input.priority ?? "medium", notes: input.notes || null,
     waitingOnClient: !!input.waitingOnClient, completedAt: input.status === "done" ? new Date() : null, createdBy: me.id,
   }).returning();
   const assignees = [...new Set(input.assigneeIds ?? [])].filter((id) => id !== t!.ownerId);
   if (assignees.length) await db.insert(taskAssignees).values(assignees.map((userId) => ({ taskId: t!.id, userId })));
-  await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: `added task "${t!.title}"` });
+  await logActivity({ engagementId, actorId: me.id, entityType: "task", entityId: t!.id, action: "created", summary: parent ? `added subtask "${t!.title}" to "${parent.title}"` : `added task "${t!.title}"` });
   if (t!.ownerId) {
     const e = await db.query.engagements.findFirst({ where: eq(engagements.id, engagementId) });
     await notifyTask({ to: t!.ownerId, by: me, kind: "owner", taskId: t!.id, title: t!.title, dueDate: t!.dueDate, engagementId });
@@ -60,7 +69,19 @@ export async function updateTask(taskId: string, patch: TaskPatch) {
   const { t: before, e } = await taskWithEngagement(taskId);
   const set: Record<string, unknown> = { ...patch, updatedAt: new Date() };
   if (patch.status) set.completedAt = patch.status === "done" ? new Date() : null;
+  // A task is a regular task, a milestone or content, never two at once.
+  if (patch.isMilestone) { set.isContent = false; set.contentFormat = null; }
+  if (patch.isContent) set.isMilestone = false;
+  if (patch.isContent === false) set.contentFormat = null;
+  if (patch.contentFormat !== undefined) set.contentFormat = validFormat(patch.contentFormat);
+  // Subtasks stay in their parent's phase.
+  if (before.parentTaskId) delete set.phaseId;
   await db.update(tasks).set(set).where(eq(tasks.id, taskId));
+  if (patch.phaseId !== undefined && !before.parentTaskId) await db.update(tasks).set({ phaseId: patch.phaseId }).where(eq(tasks.parentTaskId, taskId));
+  // Marking a parent as Content marks its regular subtasks as Content too (milestones stay milestones).
+  if (patch.isContent && !before.isContent && !before.parentTaskId) {
+    await db.update(tasks).set({ isContent: true }).where(and(eq(tasks.parentTaskId, taskId), eq(tasks.isMilestone, false)));
+  }
 
   if (patch.status && patch.status !== before.status) {
     const label = TASK_STATUSES.find((s) => s.id === patch.status)?.label;
@@ -150,8 +171,9 @@ export async function deleteComment(commentId: string) {
 export async function deleteTask(taskId: string) {
   const me = await requireUser();
   const { t, e } = await taskWithEngagement(taskId);
-  await db.delete(tasks).where(eq(tasks.id, taskId));
-  await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: null, action: "deleted", summary: `deleted task "${t.title}"` });
+  const subs = await db.select({ id: tasks.id }).from(tasks).where(eq(tasks.parentTaskId, taskId));
+  await db.delete(tasks).where(eq(tasks.id, taskId)); // its subtasks go with it (on delete cascade)
+  await logActivity({ engagementId: e.id, actorId: me.id, entityType: "task", entityId: null, action: "deleted", summary: `deleted ${t.parentTaskId ? "subtask" : "task"} "${t.title}"${subs.length ? ` and its ${subs.length} subtask${subs.length === 1 ? "" : "s"}` : ""}` });
   revalidatePath("/", "layout");
 }
 

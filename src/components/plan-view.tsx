@@ -10,11 +10,22 @@ import { NewTaskBar } from "./new-task-bar";
 import { TaskComments, type Viewer } from "./task-comments";
 import { createTask, updateTask, createPhase, setAssignees, setMyPriority, addTaskLink, removeTaskLink, deleteTask } from "@/actions/tasks";
 import { Avatar, StatusPill, PriorityDot, Icon, Empty, statusTone } from "./ui";
-import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES } from "@/lib/constants";
+import { TASK_STATUSES, PRIORITIES, MY_PRIORITIES, CONTENT_FORMATS } from "@/lib/constants";
 import { fmtDate, isOverdue, todayISO } from "@/lib/format";
 
 type Phase = typeof phasesT.$inferSelect;
 type User = typeof usersT.$inferSelect;
+
+/** Page icon for tasks marked Content. */
+function ContentIcon({ size = 15, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`shrink-0 ${className}`} style={{ color: "#c9a6f2" }}>
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" />
+    </svg>
+  );
+}
+const formatLabel = (id?: string | null) => CONTENT_FORMATS.find((f) => f.id === id)?.label ?? null;
+type Filter = "all" | "milestone" | "content";
 
 const GRID = "grid grid-cols-[28px_minmax(240px,1fr)_210px_130px_140px_110px_minmax(180px,240px)_60px] gap-3";
 
@@ -23,21 +34,43 @@ export function PlanView({ engagementId, tasks, phases, people, me }: { engageme
   const pathname = usePathname();
   const search = useSearchParams();
   const [view, setView] = useState<"list" | "timeline">((search.get("view") as "timeline") ?? "list");
-  const [onlyMs, setOnlyMs] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [fmt, setFmt] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newPhase, setNewPhase] = useState("");
   const [pending, start] = useTransition();
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  // Which parents are folded. Remembered per project in this browser; everything starts open.
+  const storeKey = `plan-collapsed:${engagementId}`;
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => { try { setCollapsed(new Set(JSON.parse(localStorage.getItem(storeKey) ?? "[]"))); } catch { /* storage unavailable */ } }, [storeKey]);
+  const toggle = (id: string, open?: boolean) => setCollapsed((c) => {
+    const n = new Set(c);
+    if (open ?? n.has(id)) n.delete(id); else n.add(id);
+    try { localStorage.setItem(storeKey, JSON.stringify([...n])); } catch { /* storage unavailable */ }
+    return n;
+  });
   const openId = search.get("task");
   const open = tasks.find((t) => t.id === openId) ?? null;
   const setOpen = (id: string | null) => router.replace(id ? `${pathname}?task=${id}${view === "timeline" ? "&view=timeline" : ""}` : `${pathname}${view === "timeline" ? "?view=timeline" : ""}`, { scroll: false });
 
-  const visible = onlyMs ? tasks.filter((t) => t.isMilestone) : tasks;
+  const matches = (t: FullTask) => filter === "all" || (filter === "milestone" ? t.isMilestone : t.isContent && (!fmt || t.contentFormat === fmt));
+  const kids = useMemo(() => {
+    const m = new Map<string, FullTask[]>();
+    for (const t of tasks) if (t.parentTaskId) m.set(t.parentTaskId, [...(m.get(t.parentTaskId) ?? []), t]);
+    return m;
+  }, [tasks]);
+  const isTop = (t: FullTask) => !t.parentTaskId || !tasks.some((p) => p.id === t.parentTaskId);
+  const childrenOf = (t: FullTask) => (kids.get(t.id) ?? []).filter((c) => filter === "all" || matches(c));
+  // A parent stays visible when any of its subtasks match the filter, so they're never orphaned.
+  const shownTop = tasks.filter((t) => isTop(t) && (matches(t) || childrenOf(t).length > 0));
+  const visible = shownTop.flatMap((t) => [t, ...childrenOf(t)]);
   const groups = useMemo(() => {
-    const g = phases.map((p) => ({ id: p.id, name: p.name, tasks: visible.filter((t) => t.phaseId === p.id) }));
-    const none = visible.filter((t) => !t.phaseId || !phases.some((p) => p.id === t.phaseId));
+    const g = phases.map((p) => ({ id: p.id, name: p.name, tasks: shownTop.filter((t) => t.phaseId === p.id) }));
+    const none = shownTop.filter((t) => !t.phaseId || !phases.some((p) => p.id === t.phaseId));
     if (none.length || !phases.length) g.push({ id: "none", name: phases.length ? "No phase" : "Tasks", tasks: none });
     return g;
-  }, [phases, visible]);
+  }, [phases, shownTop]); // eslint-disable-line react-hooks/exhaustive-deps
   const person = (id?: string | null) => people.find((p) => p.id === id);
 
   return (
@@ -48,7 +81,14 @@ export function PlanView({ engagementId, tasks, phases, people, me }: { engageme
           <button aria-pressed={view === "timeline"} onClick={() => setView("timeline")}>Timeline</button>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <label className="inline-flex items-center gap-2 min-h-11 text-[13px] cursor-pointer"><input type="checkbox" checked={onlyMs} onChange={() => setOnlyMs(!onlyMs)} className="w-4 h-4" />Milestones only</label>
+          <div className="seg" role="group" aria-label="Show">
+            <button aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All</button>
+            <button aria-pressed={filter === "milestone"} onClick={() => setFilter("milestone")}><span aria-hidden className="inline-block w-2 h-2 rotate-45 bg-mint-2 mr-1.5" />Milestones</button>
+            <button aria-pressed={filter === "content"} onClick={() => setFilter("content")}><span className="inline-flex align-[-2px] mr-1"><ContentIcon size={13} /></span>Content</button>
+          </div>
+          {filter === "content" && <select className="field min-h-11 w-40" aria-label="Content format" value={fmt} onChange={(e) => setFmt(e.target.value)}>
+            <option value="">All formats</option>{CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select>}
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { await createPhase(engagementId, newPhase); setNewPhase(""); }); }}>
             <input className="field w-40" placeholder="New phase" value={newPhase} onChange={(e) => setNewPhase(e.target.value)} aria-label="New phase name" />
             <button className="btn btn-ghost" disabled={!newPhase.trim() || pending}>Add phase</button>
@@ -67,8 +107,22 @@ export function PlanView({ engagementId, tasks, phases, people, me }: { engageme
             {groups.map((g) => (
               <div key={g.id}>
                 <div className="px-4 pt-3 pb-2 bg-panel-2 border-b border-line-2 text-xs font-semibold text-ink-2">{g.name} <span className="text-ink-3 font-normal">· {g.tasks.length}</span></div>
-                {g.tasks.length === 0 && <Empty>No tasks in this phase.</Empty>}
-                {g.tasks.map((t) => <TaskRow key={t.id} t={t} people={people} onOpen={() => setOpen(t.id)} />)}
+                {g.tasks.length === 0 && <Empty>{filter === "all" ? "No tasks in this phase." : "Nothing here matches."}</Empty>}
+                {g.tasks.map((t) => {
+                  const all = kids.get(t.id) ?? [];
+                  const subs = childrenOf(t);
+                  const expanded = !collapsed.has(t.id);
+                  return (
+                    <div key={t.id}>
+                      <TaskRow t={t} people={people} onOpen={() => setOpen(t.id)} subs={all} expanded={expanded} onToggle={() => toggle(t.id)}
+                        onAddSub={() => { toggle(t.id, true); setAddingFor(t.id); }} />
+                      {expanded && subs.map((c) => <TaskRow key={c.id} t={c} people={people} onOpen={() => setOpen(c.id)} isSub />)}
+                      {expanded && (all.length > 0 || addingFor === t.id) && (
+                        <AddSubtaskRow key={`add-${t.id}`} engagementId={engagementId} parent={t} autoFocus={addingFor === t.id} onClose={() => setAddingFor(null)} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </div>
@@ -77,7 +131,7 @@ export function PlanView({ engagementId, tasks, phases, people, me }: { engageme
         <Timeline tasks={visible} phases={phases} people={people} onOpen={setOpen} />
       )}
 
-      {open && <TaskDrawer key={open.id} task={open} phases={phases} people={people} me={me} onClose={() => setOpen(null)} />}
+      {open && <TaskDrawer key={open.id} task={open} engagementId={engagementId} all={tasks} phases={phases} people={people} me={me} onOpen={setOpen} onClose={() => setOpen(null)} />}
     </section>
   );
 }
@@ -89,23 +143,45 @@ function autoGrow(el: HTMLTextAreaElement | null) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: () => void }) {
+function TaskRow({ t, people, onOpen, isSub, subs, expanded, onToggle, onAddSub }: {
+  t: FullTask; people: User[]; onOpen: () => void; isSub?: boolean; subs?: FullTask[]; expanded?: boolean; onToggle?: () => void; onAddSub?: () => void;
+}) {
   const [, start] = useTransition();
   const save = (patch: Parameters<typeof updateTask>[1]) => start(() => updateTask(t.id, patch));
   const cell = "w-full bg-transparent border border-transparent rounded-md px-2 py-1 text-[13px] text-ink hover:border-line-3 focus:border-mint-2 focus:bg-bg outline-none";
   return (
-    <div className={`${GRID} px-4 py-2 items-start border-b border-line-2 hover:bg-[#2f3131] group`}>
+    <div className={`${GRID} px-4 py-2 items-start border-b border-line-2 hover:bg-[#2f3131] group ${isSub ? "bg-[#282a29]" : ""}`}>
       <button aria-label={`Open ${t.title}`} title="Open details, links and comments" onClick={onOpen}
         className="mt-1 w-7 h-7 rounded-md inline-flex items-center justify-center text-ink-3 hover:text-mint hover:bg-[#373a39] cursor-pointer">
         <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></svg>
       </button>
-      <div className="flex items-start gap-2 min-w-0">
-        {t.isMilestone && <span aria-label="Milestone" className="w-2.5 h-2.5 rotate-45 bg-mint-2 shrink-0 mt-2.5 mx-0.5" />}
-        <textarea aria-label="Task title" rows={1} defaultValue={t.title} ref={autoGrow} onInput={(e) => autoGrow(e.currentTarget)}
+      <div className={`flex items-start gap-2 min-w-0 ${isSub ? "relative pl-8" : ""}`}>
+        {isSub && <span aria-hidden className="absolute left-3 -top-2 h-[22px] w-3.5 border-l border-b border-line-3 rounded-bl-md" />}
+        {subs && subs.length > 0 && (
+          <button type="button" onClick={onToggle} aria-expanded={expanded} aria-label={`${expanded ? "Hide" : "Show"} subtasks of ${t.title}`}
+            className="mt-1 w-6 h-6 shrink-0 rounded-md inline-flex items-center justify-center bg-[#333635] text-ink-2 hover:text-ink cursor-pointer text-[10px]">{expanded ? "▼" : "▶"}</button>
+        )}
+        {t.isMilestone && <span aria-label="Milestone" title="Milestone" className="w-2.5 h-2.5 rotate-45 bg-mint-2 shrink-0 mt-2.5 mx-0.5" />}
+        {t.isContent && <span title={`Content${formatLabel(t.contentFormat) ? ` · ${formatLabel(t.contentFormat)}` : ""}`} className="mt-2"><ContentIcon /></span>}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <textarea aria-label="Task title" rows={1} defaultValue={t.title} ref={autoGrow} onInput={(e) => autoGrow(e.currentTarget)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") { e.currentTarget.value = t.title; e.currentTarget.blur(); } }}
           onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== t.title) save({ title: v }); else e.target.value = t.title; }}
           className={`${cell} resize-none overflow-hidden text-[14px] leading-snug ${t.status === "done" ? "text-ink-3 line-through" : t.isMilestone ? "font-semibold" : ""}`} />
+          {((subs && subs.length > 0) || (t.isContent && formatLabel(t.contentFormat))) && (
+            <div className="flex flex-wrap items-center gap-2 px-2 pb-0.5">
+
+          {subs && subs.length > 0 && (() => {
+            const done = subs.filter((c) => c.status === "done").length;
+            return <span className="inline-flex items-center gap-1.5 text-xs text-ink-3 whitespace-nowrap" title={`${done} of ${subs.length} subtasks done`}>
+              <span className="w-12 h-1.5 rounded bg-line overflow-hidden"><span className="block h-1.5 bg-mint-2" style={{ width: `${(done / subs.length) * 100}%` }} /></span>{done} of {subs.length}</span>;
+          })()}
+          {t.isContent && formatLabel(t.contentFormat) && <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-[#362b45] text-[#c9a6f2] whitespace-nowrap ">{formatLabel(t.contentFormat)}</span>}
+            </div>
+          )}
+        </div>
         <div className="flex flex-col gap-1 pt-1.5 shrink-0">
+          {!isSub && onAddSub && <button type="button" onClick={onAddSub} className="text-xs text-ink-3 hover:text-mint whitespace-nowrap cursor-pointer text-left opacity-0 group-hover:opacity-100 focus:opacity-100">+ Subtask</button>}
           {t.myPriority && <span className="text-[10.5px] px-1.5 py-0.5 rounded bg-mint-bg text-mint font-mono tracking-wider whitespace-nowrap">MY · {t.myPriority.toUpperCase()}</span>}
           {t.waitingOnClient && <span className="chip text-amber bg-amber-bg">Client</span>}
           {t.comments.length > 0 && <button onClick={onOpen} className="text-xs text-ink-3 whitespace-nowrap hover:text-mint cursor-pointer text-left">{t.comments.length} comments</button>}
@@ -115,11 +191,11 @@ function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: (
         <PersonPicker compact people={people} value={t.ownerId} onChange={(id) => save({ ownerId: id })} className="flex-1" />
         <span className="inline-flex pl-1">{t.assigneeIds.map((id) => { const p = people.find((x) => x.id === id); return p ? <span key={id} className="-ml-1.5 rounded-full border-2 border-panel"><Avatar name={p.name} src={p.avatarUrl} size={20} /></span> : null; })}</span>
       </div>
-      <select aria-label="Status" defaultValue={t.status} onChange={(e) => save({ status: e.target.value as FullTask["status"] })}
+      <select key={t.status} aria-label="Status" defaultValue={t.status} onChange={(e) => save({ status: e.target.value as FullTask["status"] })}
         className="field min-h-8 px-2 text-[13px] font-medium mt-0.5 cursor-pointer" style={{ background: statusTone[t.status]?.[0], color: statusTone[t.status]?.[1], borderColor: "transparent" }}>
         {TASK_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
       </select>
-      <input type="date" aria-label="Due date" defaultValue={t.dueDate ?? ""}
+      <input key={t.dueDate ?? ""} type="date" aria-label="Due date" defaultValue={t.dueDate ?? ""}
         onChange={(e) => save({ dueDate: e.target.value || null, startDate: t.startDate && e.target.value && t.startDate > e.target.value ? e.target.value : t.startDate ?? (e.target.value || null) })}
         className={`${cell} mt-0.5 ${isOverdue(t.dueDate, t.status) ? "text-red font-semibold" : ""}`} />
       <select aria-label="Priority" defaultValue={t.priority} onChange={(e) => save({ priority: e.target.value as FullTask["priority"] })} className={`${cell} mt-0.5 cursor-pointer`}>
@@ -127,6 +203,31 @@ function TaskRow({ t, people, onOpen }: { t: FullTask; people: User[]; onOpen: (
       </select>
       <div className="min-w-0 text-[13px] text-ink-2 leading-snug pt-1"><RichNotes compact value={t.notes ?? ""} placeholder="Add a note" onSave={(v) => save({ notes: v || null })} /></div>
       <button onClick={onOpen} title="Manage links" className={`mt-1 inline-flex items-center gap-1.5 text-[12.5px] cursor-pointer ${t.links.length ? "text-mint" : "text-ink-3 hover:text-ink"}`}><Icon name="link" size={14} />{t.links.length || "+"}</button>
+    </div>
+  );
+}
+
+/** Type a name and press Enter; the box stays open for the next one. */
+function AddSubtaskRow({ engagementId, parent, autoFocus, onClose }: { engagementId: string; parent: FullTask; autoFocus: boolean; onClose: () => void }) {
+  const [v, setV] = useState("");
+  const [err, setErr] = useState("");
+  const [pending, start] = useTransition();
+  const submit = () => {
+    const title = v.trim();
+    if (!title) return;
+    setV(""); setErr("");
+    start(async () => { try { await createTask(engagementId, { title, parentTaskId: parent.id }); } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't add the subtask"); setV(title); } });
+  };
+  return (
+    <div className="px-4 py-2 border-b border-line-2 bg-[#282a29]">
+      <form className="ml-[72px] flex items-center gap-2 max-w-[620px]" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <span aria-hidden className="text-mint font-semibold">+</span>
+        <input className="field flex-1 min-h-9" value={v} onChange={(e) => setV(e.target.value)} autoFocus={autoFocus}
+          placeholder={`Add a subtask to "${parent.title}"`} aria-label={`Add a subtask to ${parent.title}`}
+          onKeyDown={(e) => { if (e.key === "Escape") { setV(""); onClose(); e.currentTarget.blur(); } }} />
+        <button className="btn btn-ghost" disabled={!v.trim() || pending}>Add</button>
+      </form>
+      {err && <p role="alert" className="m-0 mt-1 ml-[72px] text-[12.5px] text-red">{err}</p>}
     </div>
   );
 }
@@ -198,6 +299,8 @@ function Timeline({ tasks, phases, people, onOpen }: { tasks: FullTask[]; phases
             <div key={t.id} className="flex border-b border-line-2">
               <button className="w-[260px] shrink-0 px-4 min-h-11 flex items-center gap-2 text-left bg-transparent cursor-pointer text-[13px]" onClick={() => onOpen(t.id)}>
                 {owner ? <Avatar name={owner.name} src={owner.avatarUrl} size={22} /> : <span className="w-[22px]" />}
+                {t.parentTaskId && <span aria-hidden className="text-ink-3 -mr-1">↳</span>}
+                {t.isContent && <ContentIcon size={13} />}
                 <span className={`truncate ${done ? "text-ink-3 line-through" : ""}`}>{t.title}</span>
               </button>
               <div className="flex-1 relative min-h-11">
@@ -225,7 +328,15 @@ function Timeline({ tasks, phases, people, onOpen }: { tasks: FullTask[]; phases
 }
 
 // ---------------- Task drawer ----------------
-function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; phases: Phase[]; people: User[]; me: Viewer; onClose: () => void }) {
+function TaskDrawer({ task: t, engagementId, all, phases, people, me, onOpen, onClose }: {
+  task: FullTask; engagementId: string; all: FullTask[]; phases: Phase[]; people: User[]; me: Viewer; onOpen: (id: string) => void; onClose: () => void;
+}) {
+  const parent = t.parentTaskId ? all.find((x) => x.id === t.parentTaskId) ?? null : null;
+  const subs = parent ? [] : all.filter((x) => x.parentTaskId === t.id);
+  const [newSub, setNewSub] = useState("");
+  // Ticks show right away; the server catches up a moment later.
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const kind: "task" | "milestone" | "content" = t.isMilestone ? "milestone" : t.isContent ? "content" : "task";
   const [pending, start] = useTransition();
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
@@ -242,7 +353,10 @@ function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; 
       <aside aria-label="Task details" className="relative w-[480px] max-w-full h-full bg-panel shadow-[-8px_0_24px_rgba(0,0,0,0.45)] overflow-y-auto box-border px-6 pt-5 pb-8 flex flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1.5 flex-1">
-            <span className="text-xs text-ink-3">{phases.find((p) => p.id === t.phaseId)?.name ?? "No phase"}{t.isMilestone ? " · Milestone" : ""}</span>
+            <span className="text-xs text-ink-3">
+              {phases.find((p) => p.id === t.phaseId)?.name ?? "No phase"}{t.isMilestone ? " · Milestone" : t.isContent ? ` · Content${formatLabel(t.contentFormat) ? ` · ${formatLabel(t.contentFormat)}` : ""}` : ""}
+              {parent && <> · Subtask of <button type="button" className="text-mint hover:underline cursor-pointer" onClick={() => onOpen(parent.id)}>{parent.title}</button></>}
+            </span>
             <textarea aria-label="Title" rows={2} className="bg-transparent text-[20px] font-semibold leading-tight text-ink border-0 outline-none focus:bg-bg rounded px-1 -mx-1 resize-none" defaultValue={t.title}
               onBlur={(e) => e.target.value.trim() && e.target.value !== t.title && save({ title: e.target.value.trim() })} />
           </div>
@@ -261,14 +375,32 @@ function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; 
         </div>
 
         <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-3 text-[13px] items-center">
+          <span className="text-ink-3">Type</span>
+          <span className="flex flex-wrap gap-1.5" role="group" aria-label="Type">
+            {([["task", "Task"], ["milestone", "Milestone"], ["content", "Content"]] as const).map(([id, label]) => (
+              <button key={id} type="button" aria-pressed={kind === id} onClick={() => save({ isMilestone: id === "milestone", isContent: id === "content" })}
+                className={`min-h-8 px-2.5 rounded-lg text-xs inline-flex items-center gap-1.5 cursor-pointer ${kind === id ? (id === "content" ? "border border-[#5a4775] bg-[#362b45] text-[#c9a6f2] font-semibold" : "border border-mint-2 bg-mint-bg text-mint font-semibold") : "border border-line-3 text-ink-2"}`}>
+                {id === "milestone" && <span aria-hidden className="w-2 h-2 rotate-45 bg-mint-2" />}
+                {id === "content" && <ContentIcon size={13} />}{label}
+              </button>
+            ))}
+          </span>
+          {t.isContent && <>
+            <span className="text-ink-3">Format</span>
+            <select className="field" aria-label="Content format" defaultValue={t.contentFormat ?? ""} onChange={(e) => save({ contentFormat: e.target.value || null })}>
+              <option value="">Pick a format</option>{CONTENT_FORMATS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+          </>}
           <span className="text-ink-3">Owner</span>
           <PersonPicker people={people} value={t.ownerId} onChange={(id) => save({ ownerId: id })} />
           <span className="text-ink-3 self-start pt-1.5">Assignees</span>
           <PeoplePicker people={people} value={t.assigneeIds} exclude={t.ownerId ? [t.ownerId] : []} onChange={(ids) => start(() => setAssignees(t.id, ids))} />
           <span className="text-ink-3">Phase</span>
-          <select className="field" defaultValue={t.phaseId ?? ""} onChange={(e) => save({ phaseId: e.target.value || null })}>
-            <option value="">No phase</option>{phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          {parent ? <span className="text-ink-2">Same as “{parent.title}”</span> : (
+            <select className="field" defaultValue={t.phaseId ?? ""} onChange={(e) => save({ phaseId: e.target.value || null })}>
+              <option value="">No phase</option>{phases.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
           <span className="text-ink-3">Start</span>
           <input type="date" className="field" defaultValue={t.startDate ?? ""} onChange={(e) => save({ startDate: e.target.value || null })} />
           <span className="text-ink-3">Due</span>
@@ -287,7 +419,6 @@ function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; 
           </span>
           <span className="text-ink-3">Flags</span>
           <span className="flex flex-wrap gap-4">
-            <label className="inline-flex items-center gap-2"><input type="checkbox" defaultChecked={t.isMilestone} onChange={(e) => save({ isMilestone: e.target.checked })} />Milestone</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" defaultChecked={t.waitingOnClient} onChange={(e) => save({ waitingOnClient: e.target.checked })} />Waiting on client</label>
           </span>
           <span className="text-ink-3 self-start pt-2">Links</span>
@@ -304,12 +435,39 @@ function TaskDrawer({ task: t, phases, people, me, onClose }: { task: FullTask; 
           </span>
         </div>
 
+        {!parent && (
+          <section aria-label="Subtasks" className="flex flex-col gap-2 border-t border-line-2 pt-3">
+            <div className="flex items-center justify-between text-[13px] font-semibold">
+              <span>Subtasks{subs.length ? ` · ${subs.filter((c) => ticked[c.id] ?? c.status === "done").length} of ${subs.length} done` : ""}</span>
+              {subs.length > 0 && <span className="w-16 h-1.5 rounded bg-line overflow-hidden"><span className="block h-1.5 bg-mint-2" style={{ width: `${(subs.filter((c) => ticked[c.id] ?? c.status === "done").length / subs.length) * 100}%` }} /></span>}
+            </div>
+            {subs.map((c) => {
+              const owner = c.ownerId ? person(c.ownerId) : null;
+              const done = ticked[c.id] ?? c.status === "done";
+              return (
+                <div key={c.id} className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg bg-panel-2 border border-line-2 text-[13.5px]">
+                  <input type="checkbox" className="w-4 h-4 shrink-0" checked={done} aria-label={`Mark ${c.title} ${done ? "not done" : "done"}`}
+                    onChange={() => { setTicked((x) => ({ ...x, [c.id]: !done })); start(() => updateTask(c.id, { status: done ? "not_started" : "done" })); }} />
+                  {c.isContent && <ContentIcon size={13} />}
+                  <button type="button" className={`flex-1 min-w-0 truncate text-left cursor-pointer hover:text-mint ${done ? "text-ink-3 line-through" : ""}`} onClick={() => onOpen(c.id)}>{c.title}</button>
+                  <span className={`text-xs whitespace-nowrap ${isOverdue(c.dueDate, c.status) ? "text-red" : "text-ink-3"}`}>{[owner?.name.split(" ")[0] ?? "No owner", c.dueDate ? fmtDate(c.dueDate) : null].filter(Boolean).join(" · ")}</span>
+                </div>
+              );
+            })}
+            <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); const title = newSub.trim(); if (!title) return; setNewSub(""); start(() => createTask(engagementId, { title, parentTaskId: t.id }).then(() => undefined)); }}>
+              <input className="field flex-1" placeholder="Add a subtask…" value={newSub} onChange={(e) => setNewSub(e.target.value)} aria-label="Add a subtask" />
+              <button className="btn btn-primary" disabled={!newSub.trim() || pending}>Add</button>
+            </form>
+            {subs.length > 0 && <span className="text-xs text-ink-3">Check a box to mark it done. Click a name to open that subtask.</span>}
+          </section>
+        )}
+
         <label className="flex flex-col gap-1.5 text-xs font-semibold text-ink-3">Notes
           <RichNotes value={t.notes ?? ""} className="font-normal text-[13px]" placeholder="Context, decisions, anything the team should know"
             onSave={(v) => save({ notes: v || null })} />
         </label>
 
-        <TaskComments task={t} people={people} me={me} onDeleteTask={() => { if (confirm("Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }} />
+        <TaskComments task={t} people={people} me={me} onDeleteTask={() => { if (confirm(subs.length ? `Delete this task and its ${subs.length} subtask${subs.length === 1 ? "" : "s"}?` : parent ? "Delete this subtask?" : "Delete this task?")) start(async () => { await deleteTask(t.id); onClose(); }); }} />
       </aside>
     </div>
   );

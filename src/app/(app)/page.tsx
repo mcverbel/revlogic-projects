@@ -35,9 +35,12 @@ export default async function MyWorkPage() {
             <div className="grid grid-cols-[minmax(0,1fr)_220px_110px_120px_130px] gap-3 px-4 py-3 text-xs font-semibold text-ink-3 border-b border-line">
               <span>{g.label} · {g.items.length}</span><span>Engagement</span><span>Due</span><span>Status</span><span>My priority</span>
             </div>
-            {g.items.map(({ t, e, client, myPriority }) => (
+            {g.items.map(({ t, e, client, myPriority, parentTitle }) => (
               <div key={t.id} className="grid grid-cols-[minmax(0,1fr)_220px_110px_120px_130px] gap-3 px-4 py-2.5 items-center border-b border-line-2 last:border-0">
-                <Link href={`/e/${e.slug}/plan?task=${t.id}`} className="text-ink no-underline hover:text-mint text-[14px]">{t.title}</Link>
+                <Link href={`/e/${e.slug}/plan?task=${t.id}`} className="text-ink no-underline hover:text-mint text-[14px] flex flex-col min-w-0">
+                  {parentTitle && <span className="text-xs text-ink-3 truncate">{parentTitle} ›</span>}
+                  <span>{t.title}</span>
+                </Link>
                 <span className="text-ink-2 truncate">{client.name} · {e.name}</span>
                 <span className={isOverdue(t.dueDate, t.status) ? "text-red font-semibold" : "text-ink-2"}>{fmtDate(t.dueDate) || "—"}</span>
                 <span><StatusPill status={t.status} /></span>

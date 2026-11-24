@@ -89,8 +89,12 @@ export async function myWork(userId: string) {
     .innerJoin(clients, eq(clients.id, engagements.clientId))
     .leftJoin(userTaskPrefs, and(eq(userTaskPrefs.taskId, tasks.id), eq(userTaskPrefs.userId, userId)))
     .where(and(or(eq(tasks.ownerId, userId), inArray(tasks.id, assignedIds)), isNull(engagements.archivedAt)));
+  // Subtasks carry their parent's name, so people know what they belong to.
+  const parentIds = [...new Set(rows.map((r) => r.t.parentTaskId).filter(Boolean))] as string[];
+  const parents = parentIds.length ? await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(inArray(tasks.id, parentIds)) : [];
+  const withParent = rows.map((r) => ({ ...r, parentTitle: parents.find((p) => p.id === r.t.parentTaskId)?.title ?? null }));
   const rank: Record<string, number> = { top: 0, high: 1, medium: 2, low: 3 };
-  return rows.sort((a, b) => {
+  return withParent.sort((a, b) => {
     const ra = rank[a.myPriority ?? ""] ?? 4, rb = rank[b.myPriority ?? ""] ?? 4;
     if (ra !== rb) return ra - rb;
     return (a.t.dueDate ?? "9999").localeCompare(b.t.dueDate ?? "9999");

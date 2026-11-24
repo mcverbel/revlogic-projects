@@ -113,3 +113,15 @@ export const REVS = [
   { id: "AI Solutions", label: "AI Solutions", blurb: "AI agents & workflows" },
 ] as const;
 export const REV_IDS = REVS.map((r) => r.id) as string[];
+
+/** Formats for tasks marked Content. */
+export const CONTENT_FORMATS = [
+  { id: "doc", label: "Doc" },
+  { id: "spreadsheet", label: "Spreadsheet" },
+  { id: "presentation", label: "Presentation" },
+  { id: "video", label: "Video" },
+  { id: "pdf", label: "PDF" },
+  { id: "graphic", label: "Graphic" },
+  { id: "other", label: "Other" },
+] as const;
+export type ContentFormat = (typeof CONTENT_FORMATS)[number]["id"];
